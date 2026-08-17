@@ -168,6 +168,48 @@
     padding:5px 9px; white-space:nowrap; transition:background .15s, color .15s, border-color .15s;
   }
   .btn-mini:hover{background:var(--panel-3); color:var(--ink); border-color:rgba(255,255,255,.24);}
+
+  /* ---- Login / nuvem (Supabase) ---- */
+  #auth-screen{
+    position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center;
+    background:var(--bg); background-image:var(--bg-radial); padding:20px;
+  }
+  #auth-screen.hidden{display:none;}
+  .auth-card{
+    width:100%; max-width:360px; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    padding:28px 26px; box-shadow:var(--shadow);
+  }
+  .auth-card h2{margin:0 0 4px; font-size:16px;}
+  .auth-card .sub{color:var(--ink-mute); font-size:12px; margin-bottom:18px;}
+  .auth-field{margin-bottom:12px;}
+  .auth-field label{display:block; font-size:11px; color:var(--ink-soft); font-weight:700; margin-bottom:5px; text-transform:uppercase; letter-spacing:.04em;}
+  .auth-field input{
+    width:100%; padding:9px 11px; border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+    background:var(--panel-2); color:var(--ink); font:inherit; font-size:13px;
+  }
+  .auth-field input:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft);}
+  .auth-actions{display:flex; gap:8px; margin-top:16px;}
+  .auth-actions button{flex:1;}
+  .auth-msg{font-size:12px; margin-top:12px; line-height:1.5;}
+  .auth-msg.err{color:var(--bad);}
+  .auth-msg.ok{color:var(--ok);}
+  #main-app{display:none;}
+  #main-app.ready{display:block;}
+  .save-status{font-size:11px; color:var(--ink-mute); display:flex; align-items:center; gap:6px; padding:0 4px;}
+  .save-status .dot{width:6px; height:6px; border-radius:50%; background:var(--ink-mute); flex:none;}
+  .save-status.saving .dot{background:var(--accent); box-shadow:0 0 6px 1px var(--accent-glow);}
+  .save-status.saved .dot{background:var(--ok);}
+  .save-status.error .dot{background:var(--bad);}
+
+  .modal-backdrop{position:fixed; inset:0; z-index:90; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; padding:20px;}
+  .modal-backdrop.hidden{display:none;}
+  .modal-box{width:100%; max-width:520px; max-height:80vh; overflow-y:auto; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:22px 24px; box-shadow:var(--shadow);}
+  .modal-box h2{margin:0 0 4px; font-size:15px;}
+  .modal-box .sub{color:var(--ink-mute); font-size:12px; margin-bottom:16px;}
+  .hist-item{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 0; border-bottom:1px solid var(--line);}
+  .hist-item:last-child{border-bottom:none;}
+  .hist-item .when{font-size:12.5px; color:var(--ink);}
+  .modal-close{display:flex; justify-content:flex-end; margin-top:14px;}
 </style>
 </head>
 <body>
@@ -178,16 +220,51 @@
     <p>Baseado na última quinzena registrada (1ª quinzena de Julho/2026). As próximas quinzenas replicam automaticamente a mesma estrutura e fórmulas.</p>
   </div>
   <div class="toolbar">
+    <span class="save-status" id="save-status"><span class="dot"></span><span id="save-status-text">—</span></span>
+    <button class="ghost icon-btn" id="btn-history" title="Ver versões salvas anteriormente">🕓 Histórico</button>
     <button class="ghost icon-btn" id="btn-toggle-privacy" title="Borrar/mostrar os valores em R$">🙈 Ocultar valores</button>
     <button class="ghost icon-btn" id="btn-set-key" title="Definir ou alterar a chave usada para revelar os valores">🔑 Chave</button>
     <button class="ghost" id="btn-import">⬆️ Importar dados</button>
     <input type="file" id="file-import" accept="application/json">
     <button id="btn-export">⬇️ Exportar dados (.json)</button>
     <button class="primary" id="btn-save-html">💾 Salvar cópia do app (.html)</button>
+    <button class="ghost icon-btn" id="btn-logout" title="Sair da conta">🚪 Sair</button>
   </div>
 </header>
 
-<main>
+<div id="auth-screen">
+  <div class="auth-card">
+    <h2 id="auth-title">Entrar</h2>
+    <div class="sub" id="auth-sub">Faça login pra acessar e salvar os débitos na nuvem.</div>
+    <div class="auth-field">
+      <label>E-mail</label>
+      <input type="email" id="auth-email" autocomplete="username">
+    </div>
+    <div class="auth-field">
+      <label>Senha</label>
+      <input type="password" id="auth-password" autocomplete="current-password">
+    </div>
+    <div class="auth-actions">
+      <button class="ghost" id="btn-auth-signup">Criar conta</button>
+      <button class="primary" id="btn-auth-signin">Entrar</button>
+    </div>
+    <div class="auth-msg" id="auth-msg"></div>
+    <div style="text-align:center;margin-top:14px;">
+      <a href="#" id="link-skip-auth" style="color:var(--ink-mute);font-size:11.5px;">Continuar sem login (modo local, não salva na nuvem)</a>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop hidden" id="history-modal">
+  <div class="modal-box">
+    <h2>Histórico de versões</h2>
+    <div class="sub">Cada vez que os dados são salvos, uma cópia fica guardada aqui. Você pode restaurar qualquer uma.</div>
+    <div id="history-list"></div>
+    <div class="modal-close"><button class="ghost" id="btn-history-close">Fechar</button></div>
+  </div>
+</div>
+
+<main id="main-app">
   <div class="quinzena-bar">
     <div class="quinzena-tabs" id="quinzena-tabs"></div>
     <button class="primary" id="btn-nova-quinzena">+ Nova quinzena</button>
@@ -223,6 +300,7 @@
 </main>
 
 <script id="app-data" type="application/json">SEED_PLACEHOLDER</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 (function(){
   "use strict";
@@ -427,6 +505,7 @@
     state.quinzenas.push(nova);
     state.selectedQuinzenaId = nova.id;
     render();
+    scheduleSave();
   }
 
   function removeQuinzena(id){
@@ -435,6 +514,7 @@
     state.quinzenas = state.quinzenas.filter(function(q){ return q.id!==id; });
     state.selectedQuinzenaId = state.quinzenas[state.quinzenas.length-1].id;
     render();
+    scheduleSave();
   }
 
   // ---------- Render ----------
@@ -530,7 +610,7 @@
       lbl.innerHTML = 'Preço por unidade&nbsp;';
       var inp = document.createElement('input');
       inp.type='number'; inp.step='0.01'; inp.value = q.prices[p.id].v;
-      inp.addEventListener('input', function(){ q.prices[p.id].v = Number(inp.value)||0; renderPersonTable(); renderResumoQuinzena(); renderResumoGeral(); renderKpis(); });
+      inp.addEventListener('input', function(){ q.prices[p.id].v = Number(inp.value)||0; renderPersonTable(); renderResumoQuinzena(); renderResumoGeral(); renderKpis(); scheduleSave(); });
       lbl.appendChild(inp);
       wrap.appendChild(lbl);
     } else {
@@ -538,7 +618,7 @@
       lblA.innerHTML = 'Preço '+p.labelA+'&nbsp;';
       var inpA = document.createElement('input');
       inpA.type='number'; inpA.step='0.01'; inpA.value = q.prices[p.id].a;
-      inpA.addEventListener('input', function(){ q.prices[p.id].a = Number(inpA.value)||0; renderPersonTable(); renderResumoQuinzena(); renderResumoGeral(); renderKpis(); });
+      inpA.addEventListener('input', function(){ q.prices[p.id].a = Number(inpA.value)||0; renderPersonTable(); renderResumoQuinzena(); renderResumoGeral(); renderKpis(); scheduleSave(); });
       lblA.appendChild(inpA);
       wrap.appendChild(lblA);
 
@@ -546,7 +626,7 @@
       lblB.innerHTML = 'Preço '+p.labelB+'&nbsp;';
       var inpB = document.createElement('input');
       inpB.type='number'; inpB.step='0.01'; inpB.value = q.prices[p.id].b;
-      inpB.addEventListener('input', function(){ q.prices[p.id].b = Number(inpB.value)||0; renderPersonTable(); renderResumoQuinzena(); renderResumoGeral(); renderKpis(); });
+      inpB.addEventListener('input', function(){ q.prices[p.id].b = Number(inpB.value)||0; renderPersonTable(); renderResumoQuinzena(); renderResumoGeral(); renderKpis(); scheduleSave(); });
       lblB.appendChild(inpB);
       wrap.appendChild(lblB);
     }
@@ -565,6 +645,7 @@
       sel.className = 'status-select ' + (sel.value==='PAGO' ? 'pago' : 'nao');
       renderResumoQuinzena();
       renderKpis();
+      scheduleSave();
     });
     statusLbl.appendChild(sel);
     wrap.appendChild(statusLbl);
@@ -635,6 +716,7 @@
           renderResumoQuinzena();
           renderResumoGeral();
           renderKpis();
+          scheduleSave();
         });
         td.appendChild(inp);
         return td;
@@ -979,6 +1061,7 @@
         if(!state.selectedQuinzenaId) state.selectedQuinzenaId = state.quinzenas[state.quinzenas.length-1].id;
         if(!state.selectedPersonId) state.selectedPersonId = 'dinho';
         render();
+        scheduleSave();
         alert('Dados importados com sucesso.');
       }catch(err){
         alert('Não foi possível importar esse arquivo: '+err.message);
@@ -994,7 +1077,217 @@
     downloadBlob(html, 'controle-debitos-quinzenas.html', 'text/html');
   });
 
-  render();
+  // ---------- Nuvem (Supabase): login, salvar automático e histórico de versões ----------
+  var SUPABASE_URL = 'https://rvmbsqrmrkhegdophfpu.supabase.co';
+  var SUPABASE_KEY = 'sb_publishable_87-6Lrr7F59aAl1KT_AV2w_WLl6C9of';
+  var supabaseClient = null;
+  if(window.supabase && typeof window.supabase.createClient === 'function'){
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  }
+
+  var currentSession = null;
+  var saveTimer = null;
+  var lastSavedSnapshot = null;
+
+  function setSaveStatus(cls, text){
+    var el = document.getElementById('save-status');
+    if(!el) return;
+    el.className = 'save-status' + (cls ? ' '+cls : '');
+    document.getElementById('save-status-text').textContent = text;
+  }
+
+  function setAuthMsg(text, cls){
+    var el = document.getElementById('auth-msg');
+    el.textContent = text || '';
+    el.className = 'auth-msg' + (cls ? ' '+cls : '');
+  }
+
+  function showAuthScreen(){
+    document.getElementById('auth-screen').classList.remove('hidden');
+    document.getElementById('main-app').classList.remove('ready');
+  }
+  function hideAuthScreen(){
+    document.getElementById('auth-screen').classList.add('hidden');
+    document.getElementById('main-app').classList.add('ready');
+  }
+
+  function scheduleSave(){
+    if(!supabaseClient || !currentSession) return;
+    setSaveStatus('saving', 'Salvando…');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(doSave, 1000);
+  }
+
+  function doSave(){
+    if(!supabaseClient || !currentSession) return;
+    var snapshot = JSON.stringify(state);
+    if(snapshot === lastSavedSnapshot){ setSaveStatus('saved', 'Salvo na nuvem'); return; }
+    // Congela uma cópia dos dados neste exato instante — se passássemos "state" direto, uma edição
+    // feita enquanto o salvamento ainda está em andamento poderia "vazar" pro registro do histórico.
+    var payload = JSON.parse(snapshot);
+    return supabaseClient.from('app_state')
+      .upsert({ id:1, data: payload, updated_at: new Date().toISOString(), updated_by: currentSession.user.id })
+      .then(function(res){
+        if(res.error) throw res.error;
+        return supabaseClient.from('app_state_history').insert({ data: payload, saved_by: currentSession.user.id });
+      })
+      .then(function(res){
+        if(res && res.error) throw res.error;
+        lastSavedSnapshot = snapshot;
+        setSaveStatus('saved', 'Salvo na nuvem');
+      })
+      .catch(function(err){
+        console.error('Falha ao salvar na nuvem:', err);
+        setSaveStatus('error', 'Erro ao salvar (veja o console)');
+      });
+  }
+
+  function loadStateFromCloud(){
+    return supabaseClient.from('app_state').select('data').eq('id', 1).maybeSingle()
+      .then(function(res){
+        if(res.error) throw res.error;
+        var row = res.data;
+        if(row && row.data && row.data.quinzenas && row.data.quinzenas.length){
+          state = row.data;
+          if(!state.selectedQuinzenaId) state.selectedQuinzenaId = state.quinzenas[state.quinzenas.length-1].id;
+          if(!state.selectedPersonId) state.selectedPersonId = 'dinho';
+          lastSavedSnapshot = JSON.stringify(state);
+        } else {
+          // Primeira vez: ainda não existe nada salvo na nuvem — envia o estado atual (semente) como inicial.
+          return doSave();
+        }
+      })
+      .catch(function(err){
+        console.warn('Não foi possível carregar da nuvem, mantendo dados locais.', err);
+      });
+  }
+
+  function onAuthenticated(session){
+    currentSession = session;
+    hideAuthScreen();
+    setSaveStatus('saving', 'Carregando…');
+    return loadStateFromCloud().then(function(){
+      render();
+      setSaveStatus('saved', 'Sincronizado');
+    });
+  }
+
+  function onSignedOut(){
+    currentSession = null;
+    lastSavedSnapshot = null;
+    showAuthScreen();
+    setAuthMsg('', '');
+  }
+
+  function bootLocalOnly(warn){
+    currentSession = null;
+    hideAuthScreen();
+    render();
+    setSaveStatus('error', warn || 'Modo local (sem nuvem)');
+  }
+
+  document.getElementById('link-skip-auth') && document.getElementById('link-skip-auth').addEventListener('click', function(ev){
+    ev.preventDefault();
+    bootLocalOnly('Modo local (sem nuvem)');
+  });
+
+  document.getElementById('btn-logout').addEventListener('click', function(){
+    if(!supabaseClient){ bootLocalOnly('Modo local (sem nuvem)'); return; }
+    supabaseClient.auth.signOut();
+  });
+
+  document.getElementById('btn-auth-signin').addEventListener('click', function(){
+    if(!supabaseClient){ setAuthMsg('Sem conexão com a nuvem no momento.', 'err'); return; }
+    var email = document.getElementById('auth-email').value.trim();
+    var password = document.getElementById('auth-password').value;
+    if(!email || !password){ setAuthMsg('Preencha e-mail e senha.', 'err'); return; }
+    setAuthMsg('Entrando…', '');
+    supabaseClient.auth.signInWithPassword({ email: email, password: password }).then(function(res){
+      if(res.error){ setAuthMsg('Não foi possível entrar: '+res.error.message, 'err'); return; }
+      return onAuthenticated(res.data.session);
+    });
+  });
+
+  document.getElementById('btn-auth-signup').addEventListener('click', function(){
+    if(!supabaseClient){ setAuthMsg('Sem conexão com a nuvem no momento.', 'err'); return; }
+    var email = document.getElementById('auth-email').value.trim();
+    var password = document.getElementById('auth-password').value;
+    if(!email || !password){ setAuthMsg('Preencha e-mail e senha.', 'err'); return; }
+    if(password.length < 6){ setAuthMsg('A senha precisa ter pelo menos 6 caracteres.', 'err'); return; }
+    setAuthMsg('Criando conta…', '');
+    supabaseClient.auth.signUp({ email: email, password: password }).then(function(res){
+      if(res.error){ setAuthMsg('Não foi possível criar a conta: '+res.error.message, 'err'); return; }
+      if(res.data.session){ return onAuthenticated(res.data.session); }
+      setAuthMsg('Conta criada! Verifique seu e-mail pra confirmar antes de entrar.', 'ok');
+    });
+  });
+
+  document.getElementById('btn-history').addEventListener('click', function(){
+    if(!supabaseClient || !currentSession) return;
+    var modal = document.getElementById('history-modal');
+    modal.classList.remove('hidden');
+    var list = document.getElementById('history-list');
+    list.innerHTML = '<div class="empty">Carregando…</div>';
+    supabaseClient.from('app_state_history').select('id, saved_at').order('saved_at', {ascending:false}).limit(50)
+      .then(function(res){
+        if(res.error) throw res.error;
+        var rows = res.data || [];
+        if(!rows.length){ list.innerHTML = '<div class="empty">Nenhuma versão salva ainda.</div>'; return; }
+        list.innerHTML = '';
+        rows.forEach(function(row){
+          var item = document.createElement('div');
+          item.className = 'hist-item';
+          var when = document.createElement('div');
+          when.className = 'when';
+          when.textContent = new Date(row.saved_at).toLocaleString('pt-BR');
+          var btn = document.createElement('button');
+          btn.className = 'btn-mini';
+          btn.textContent = 'Restaurar';
+          btn.addEventListener('click', function(){ restoreHistoryVersion(row.id); });
+          item.appendChild(when);
+          item.appendChild(btn);
+          list.appendChild(item);
+        });
+      })
+      .catch(function(err){
+        console.error('Erro ao carregar histórico:', err);
+        list.innerHTML = '<div class="empty">Erro ao carregar histórico.</div>';
+      });
+  });
+
+  function restoreHistoryVersion(id){
+    if(!confirm('Restaurar essa versão? A tela vai mostrar os dados salvos naquele momento (isso também cria uma nova entrada no histórico).')) return;
+    supabaseClient.from('app_state_history').select('data').eq('id', id).single().then(function(res){
+      if(res.error || !res.data){ alert('Não foi possível carregar essa versão.'); return; }
+      state = res.data.data;
+      if(!state.selectedQuinzenaId) state.selectedQuinzenaId = state.quinzenas[state.quinzenas.length-1].id;
+      if(!state.selectedPersonId) state.selectedPersonId = 'dinho';
+      render();
+      scheduleSave();
+      document.getElementById('history-modal').classList.add('hidden');
+    });
+  }
+
+  document.getElementById('btn-history-close').addEventListener('click', function(){
+    document.getElementById('history-modal').classList.add('hidden');
+  });
+
+  // ---------- Bootstrap ----------
+  if(supabaseClient){
+    supabaseClient.auth.onAuthStateChange(function(event, session){
+      if(event === 'SIGNED_IN' && session && !currentSession){ onAuthenticated(session); }
+      else if(event === 'SIGNED_OUT'){ onSignedOut(); }
+    });
+    supabaseClient.auth.getSession().then(function(res){
+      var session = res.data && res.data.session;
+      if(session){ onAuthenticated(session); }
+      else { showAuthScreen(); }
+    }).catch(function(){
+      bootLocalOnly('Não foi possível conectar à nuvem — modo local');
+    });
+  } else {
+    bootLocalOnly('Não foi possível conectar à nuvem — modo local');
+  }
 })();
 </script>
 </body>
