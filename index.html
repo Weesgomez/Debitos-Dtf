@@ -854,12 +854,16 @@
         var price = q.prices[person.id].v;
         var c = calcSimples(e, price);
         temMovimento = (Number(e.q)||0) !== 0 || (Number(e.dev)||0) !== 0;
-        cols = [fmtDate(day.date), e.q, money(c.saldoDevedor), e.dev, money(c.saldoTotal)];
+        // Saldo já descontando a devolução do dia (mesmo valor do saldo total, mas mantido
+        // como coluna própria para ficar claro no relatório enviado ao cliente).
+        cols = [fmtDate(day.date), e.q, money(c.saldoTotal), e.dev, money(c.saldoTotal)];
       } else {
         var pa = q.prices[person.id].a, pb = q.prices[person.id].b;
         var c2 = calcDuplo(e, pa, pb);
         temMovimento = (Number(e.qc)||0) !== 0 || (Number(e.qb)||0) !== 0 || (Number(e.devc)||0) !== 0 || (Number(e.devb)||0) !== 0;
-        cols = [fmtDate(day.date), e.qc, money(c2.saldoA), e.qb, money(c2.saldoB), e.devc, e.devb, money(c2.saldoTotal)];
+        var qc=Number(e.qc)||0, qb=Number(e.qb)||0, devc=Number(e.devc)||0, devb=Number(e.devb)||0;
+        var saldoALiquido = (qc-devc)*pa, saldoBLiquido = (qb-devb)*pb;
+        cols = [fmtDate(day.date), e.qc, money(saldoALiquido), e.qb, money(saldoBLiquido), e.devc, e.devb, money(c2.saldoTotal)];
       }
       if(temMovimento) linhas.push(cols);
     });
@@ -879,7 +883,9 @@
         }).join('')
       : '<tr><td colspan="'+headers.length+'" style="text-align:center;color:#888;padding:14px;">Nenhum lançamento nesta quinzena.</td></tr>';
 
-    var qtdTotal = person.type==='simples' ? totals.q : (totals.qc + totals.qb);
+    var qtdVendida = person.type==='simples' ? totals.q : (totals.qc + totals.qb);
+    var qtdDevolvida = person.type==='simples' ? totals.dev : (totals.devc + totals.devb);
+    var qtdLiquida = qtdVendida - qtdDevolvida;
     var geradoEm = new Date().toLocaleString('pt-BR');
     var statusColor = statusVal === 'PAGO' ? '#22c55e' : '#f43f5e';
 
@@ -901,13 +907,19 @@
       'th,td{padding:8px 10px;border-bottom:1px solid #e6e8ec;text-align:right;}'+
       'th:first-child,td:first-child{text-align:left;}'+
       'th{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#888;font-weight:700;}'+
-      '.total-final{display:flex;justify-content:flex-end;align-items:baseline;gap:10px;border-top:2px solid #1a1c22;padding-top:14px;}'+
-      '.total-final .lbl{font-size:13px;font-weight:700;color:#444;}'+
-      '.total-final .val{font-size:24px;font-weight:800;}'+
-      '.foot{margin-top:26px;color:#999;font-size:11px;text-align:center;}'+
+      'tr{page-break-inside:avoid;break-inside:avoid;}'+
+      '.total-final{display:flex;justify-content:space-between;align-items:center;gap:10px;'+
+        'border:2px solid #1a1c22;border-radius:10px;padding:14px 18px;margin-top:6px;background:#f7f8fa;'+
+        'page-break-inside:avoid;break-inside:avoid;}'+
+      '.total-final .lbl{font-size:13px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:.03em;}'+
+      '.total-final .val{font-size:26px;font-weight:800;}'+
+      '.total-final .dev-tag{display:inline-block;margin-top:5px;font-size:10.5px;font-weight:700;color:#f43f5e;'+
+        'background:rgba(244,63,94,.1);border-radius:999px;padding:2px 9px;text-transform:none;letter-spacing:0;}'+
+      '.foot{margin-top:26px;color:#999;font-size:11px;text-align:center;page-break-inside:avoid;break-inside:avoid;}'+
       '.no-print{text-align:center;margin-top:22px;}'+
       '.no-print button{font:inherit;font-weight:700;font-size:13px;padding:10px 18px;border-radius:8px;border:none;background:#1a1c22;color:#fff;cursor:pointer;}'+
-      '@media print{.no-print{display:none;} body{background:#fff;} .sheet{box-shadow:none;margin:0;}}'+
+      '*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
+      '@media print{.no-print{display:none;} body{background:#fff;} .sheet{box-shadow:none;margin:0;max-width:none;}}'+
       '</style></head><body>'+
       '<div class="sheet">'+
         '<div class="top">'+
@@ -920,7 +932,9 @@
           '<div><div class="lbl">Período</div><div class="val">'+fmtDate(q.startDate)+' – '+fmtDate(q.endDate)+'</div></div>'+
         '</div>'+
         '<table><thead>'+theadHtml+'</thead><tbody>'+rowsHtml+'</tbody></table>'+
-        '<div class="total-final"><span class="lbl">Total (quantidade: '+qtdTotal+')</span><span class="val">'+money(totals.saldoTotal)+'</span></div>'+
+        '<div class="total-final"><div><span class="lbl">Total a pagar &middot; '+qtdLiquida+' unidade'+(qtdLiquida===1?'':'s')+'</span>'+
+          (qtdDevolvida>0 ? '<div class="dev-tag">&#8617; '+qtdDevolvida+' devolvida'+(qtdDevolvida===1?'':'s')+'</div>' : '')+
+          '</div><span class="val">'+money(totals.saldoTotal)+'</span></div>'+
         '<p class="foot">Vencimento: '+fmtDate(q.dueDate)+' · Relatório gerado em '+geradoEm+'</p>'+
         '<div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>'+
       '</div>'+
