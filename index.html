@@ -152,6 +152,22 @@
   .hint{color:var(--ink-mute); font-size:11.5px; text-align:center; margin-top:14px; line-height:1.6;}
   input[type=file]{display:none;}
   .empty{color:var(--ink-mute); font-size:12.5px; padding:10px 0;}
+
+  /* ---- Privacidade / borrar valores ---- */
+  .money{transition:filter .15s;}
+  body.blurred .money{
+    filter:blur(6px);
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  body.blurred .money:hover{filter:blur(3px);}
+  button.icon-btn{padding:9px 12px;}
+  .btn-mini{
+    font:inherit; font-weight:600; font-size:11px; cursor:pointer; border-radius:7px;
+    border:1px solid var(--line-strong); background:var(--panel-2); color:var(--ink-soft);
+    padding:5px 9px; white-space:nowrap; transition:background .15s, color .15s, border-color .15s;
+  }
+  .btn-mini:hover{background:var(--panel-3); color:var(--ink); border-color:rgba(255,255,255,.24);}
 </style>
 </head>
 <body>
@@ -162,6 +178,8 @@
     <p>Baseado na última quinzena registrada (1ª quinzena de Julho/2026). As próximas quinzenas replicam automaticamente a mesma estrutura e fórmulas.</p>
   </div>
   <div class="toolbar">
+    <button class="ghost icon-btn" id="btn-toggle-privacy" title="Borrar/mostrar os valores em R$">🙈 Ocultar valores</button>
+    <button class="ghost icon-btn" id="btn-set-key" title="Definir ou alterar a chave usada para revelar os valores">🔑 Chave</button>
     <button class="ghost" id="btn-import">⬆️ Importar dados</button>
     <input type="file" id="file-import" accept="application/json">
     <button id="btn-export">⬇️ Exportar dados (.json)</button>
@@ -456,19 +474,19 @@
       if(Math.abs(diff) >= 0.005){
         var cls = diff > 0 ? 'diff-up' : 'diff-down';
         var arrow = diff > 0 ? '▲' : '▼';
-        diffHtml = '<div class="kpi-sub '+cls+'">'+arrow+' '+money(Math.abs(diff))+' '+(diff>0?'a mais':'a menos')+' que a quinzena anterior</div>';
+        diffHtml = '<div class="kpi-sub '+cls+'">'+arrow+' <span class="money">'+money(Math.abs(diff))+'</span> '+(diff>0?'a mais':'a menos')+' que a quinzena anterior</div>';
       }
     }
 
     var wrap = document.getElementById('kpi-row');
     wrap.innerHTML =
       '<div class="kpi-card"><div class="kpi-label">Saldo total da quinzena</div>'+
-        '<div class="kpi-value">'+money(totalSaldo)+'</div>'+diffHtml+'</div>'+
+        '<div class="kpi-value"><span class="money">'+money(totalSaldo)+'</span></div>'+diffHtml+'</div>'+
       '<div class="kpi-card"><div class="kpi-label">Em aberto</div>'+
-        '<div class="kpi-value neg">'+money(totalAberto)+'</div>'+
+        '<div class="kpi-value neg"><span class="money">'+money(totalAberto)+'</span></div>'+
         '<div class="kpi-sub">'+pessoasAberto+' de '+PEOPLE.length+' pessoas com saldo pendente</div></div>'+
       '<div class="kpi-card"><div class="kpi-label">Pago</div>'+
-        '<div class="kpi-value pos">'+money(totalPago)+'</div>'+
+        '<div class="kpi-value pos"><span class="money">'+money(totalPago)+'</span></div>'+
         '<div class="kpi-sub">'+pessoasPagas+' de '+PEOPLE.length+' pessoas quitadas</div></div>'+
       '<div class="kpi-card"><div class="kpi-label">Itens no período</div>'+
         '<div class="kpi-value">'+totalItens+'</div>'+
@@ -550,6 +568,13 @@
     });
     statusLbl.appendChild(sel);
     wrap.appendChild(statusLbl);
+
+    var btnReport = document.createElement('button');
+    btnReport.type = 'button';
+    btnReport.className = 'btn-mini';
+    btnReport.textContent = '🧾 Relatório de cobrança de '+p.name;
+    btnReport.addEventListener('click', function(){ downloadCobranca(p.id, q.id); });
+    wrap.appendChild(btnReport);
   }
 
   function renderPersonTable(){
@@ -580,21 +605,21 @@
         var price = q.prices[p.id].v;
         var c = calcSimples(e, price);
         tr.appendChild(numInput(e, 'q'));
-        tr.appendChild(readCell(money(c.saldoDevedor)));
+        tr.appendChild(moneyCell(c.saldoDevedor));
         tr.appendChild(numInput(e, 'dev'));
-        tr.appendChild(readCell(money(c.saldoTotal)));
+        tr.appendChild(moneyCell(c.saldoTotal));
         totals.q += Number(e.q)||0; totals.dev += Number(e.dev)||0;
         totals.saldoDevedor += c.saldoDevedor; totals.saldoTotal += c.saldoTotal;
       } else {
         var pa = q.prices[p.id].a, pb = q.prices[p.id].b;
         var c2 = calcDuplo(e, pa, pb);
         tr.appendChild(numInput(e, 'qc'));
-        tr.appendChild(readCell(money(c2.saldoA)));
+        tr.appendChild(moneyCell(c2.saldoA));
         tr.appendChild(numInput(e, 'qb'));
-        tr.appendChild(readCell(money(c2.saldoB)));
+        tr.appendChild(moneyCell(c2.saldoB));
         tr.appendChild(numInput(e, 'devc'));
         tr.appendChild(numInput(e, 'devb'));
-        tr.appendChild(readCell(money(c2.saldoTotal)));
+        tr.appendChild(moneyCell(c2.saldoTotal));
         totals.qc += Number(e.qc)||0; totals.qb += Number(e.qb)||0;
         totals.devc += Number(e.devc)||0; totals.devb += Number(e.devb)||0;
         totals.saldoA += c2.saldoA; totals.saldoB += c2.saldoB; totals.saldoTotal += c2.saldoTotal;
@@ -614,7 +639,7 @@
         td.appendChild(inp);
         return td;
       }
-      function readCell(text){ var td=document.createElement('td'); td.textContent = text; return td; }
+      function moneyCell(v){ var td=document.createElement('td'); td.innerHTML = '<span class="money">'+money(v)+'</span>'; return td; }
 
       tbody.appendChild(tr);
     });
@@ -623,14 +648,25 @@
     var tfoot = document.createElement('tfoot');
     var trt = document.createElement('tr'); trt.className='total-row';
     var tdLabel = document.createElement('td'); tdLabel.textContent='TOTAL'; trt.appendChild(tdLabel);
+    function totalCell(v, isMoney){
+      var td=document.createElement('td');
+      if(isMoney) td.innerHTML = '<span class="money">'+v+'</span>';
+      else td.textContent = v;
+      return td;
+    }
     if(p.type==='simples'){
-      [totals.q, money(totals.saldoDevedor), totals.dev, money(totals.saldoTotal)].forEach(function(v){
-        var td=document.createElement('td'); td.textContent=v; trt.appendChild(td);
-      });
+      trt.appendChild(totalCell(totals.q, false));
+      trt.appendChild(totalCell(money(totals.saldoDevedor), true));
+      trt.appendChild(totalCell(totals.dev, false));
+      trt.appendChild(totalCell(money(totals.saldoTotal), true));
     } else {
-      [totals.qc, money(totals.saldoA), totals.qb, money(totals.saldoB), totals.devc, totals.devb, money(totals.saldoTotal)].forEach(function(v){
-        var td=document.createElement('td'); td.textContent=v; trt.appendChild(td);
-      });
+      trt.appendChild(totalCell(totals.qc, false));
+      trt.appendChild(totalCell(money(totals.saldoA), true));
+      trt.appendChild(totalCell(totals.qb, false));
+      trt.appendChild(totalCell(money(totals.saldoB), true));
+      trt.appendChild(totalCell(totals.devc, false));
+      trt.appendChild(totalCell(totals.devb, false));
+      trt.appendChild(totalCell(money(totals.saldoTotal), true));
     }
     tfoot.appendChild(trt);
     table.appendChild(tfoot);
@@ -642,7 +678,7 @@
   function renderResumoQuinzena(){
     var q = currentQuinzena();
     var table = document.getElementById('resumo-quinzena');
-    var rows = ['<tr><th>Pessoa</th><th>Quantidade</th><th>Devolução</th><th>Saldo total</th><th>Status</th></tr>'];
+    var rows = ['<tr><th>Pessoa</th><th>Quantidade</th><th>Devolução</th><th>Saldo total</th><th>Status</th><th>Cobrança</th></tr>'];
     var grandTotal = 0;
     PEOPLE.forEach(function(p){
       var t = quinzenaTotals(q, p.id);
@@ -652,11 +688,17 @@
       grandTotal += saldo;
       var statusVal = q.status[p.id];
       var tagClass = statusVal==='PAGO' ? 'pago' : 'nao';
-      rows.push('<tr><td>'+p.name+'</td><td>'+qtd+'</td><td>'+dev+'</td><td>'+money(saldo)+'</td>'+
-                 '<td><span class="tag '+tagClass+'">'+statusVal+'</span></td></tr>');
+      rows.push('<tr><td>'+p.name+'</td><td>'+qtd+'</td><td>'+dev+'</td><td><span class="money">'+money(saldo)+'</span></td>'+
+                 '<td><span class="tag '+tagClass+'">'+statusVal+'</span></td>'+
+                 '<td><button type="button" class="btn-mini btn-cobranca" data-person="'+p.id+'" title="Baixar relatório de cobrança de '+p.name+'">🧾 Baixar</button></td></tr>');
     });
-    rows.push('<tr class="total-row"><td>TOTAL</td><td></td><td></td><td>'+money(grandTotal)+'</td><td></td></tr>');
+    rows.push('<tr class="total-row"><td>TOTAL</td><td></td><td></td><td><span class="money">'+money(grandTotal)+'</span></td><td></td><td></td></tr>');
     table.innerHTML = rows.join('');
+    table.querySelectorAll('.btn-cobranca').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        downloadCobranca(btn.getAttribute('data-person'), q.id);
+      });
+    });
   }
 
   function renderResumoGeral(){
@@ -668,12 +710,12 @@
       var cells = state.quinzenas.map(function(q){
         var t = quinzenaTotals(q, p.id);
         acc += t.saldoTotal;
-        return '<td>'+money(t.saldoTotal)+'</td>';
+        return '<td><span class="money">'+money(t.saldoTotal)+'</span></td>';
       }).join('');
       grand += acc;
-      rows.push('<tr><td>'+p.name+'</td>'+cells+'<td><strong>'+money(acc)+'</strong></td></tr>');
+      rows.push('<tr><td>'+p.name+'</td>'+cells+'<td><strong><span class="money">'+money(acc)+'</span></strong></td></tr>');
     });
-    rows.push('<tr class="total-row"><td>TOTAL</td>'+state.quinzenas.map(function(){return '<td></td>';}).join('')+'<td>'+money(grand)+'</td></tr>');
+    rows.push('<tr class="total-row"><td>TOTAL</td>'+state.quinzenas.map(function(){return '<td></td>';}).join('')+'<td><span class="money">'+money(grand)+'</span></td></tr>');
     table.innerHTML = rows.join('');
   }
 
@@ -685,6 +727,212 @@
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  }
+
+  // ---------- Privacidade: borrar/mostrar valores com chave ----------
+  var LS_HIDDEN = 'ddtf_valores_ocultos';
+  var LS_KEYHASH = 'ddtf_chave_hash';
+
+  function hasSubtleCrypto(){
+    return !!(window.crypto && window.crypto.subtle && window.isSecureContext !== false);
+  }
+
+  function sha256Hex(text){
+    if(!hasSubtleCrypto()) return Promise.resolve(null);
+    var enc = new TextEncoder().encode(text);
+    return window.crypto.subtle.digest('SHA-256', enc).then(function(buf){
+      var bytes = Array.from(new Uint8Array(buf));
+      return bytes.map(function(b){ return b.toString(16).padStart(2,'0'); }).join('');
+    });
+  }
+
+  function getStoredKeyHash(){ return localStorage.getItem(LS_KEYHASH) || ''; }
+  function hasKeySet(){ return !!getStoredKeyHash(); }
+
+  function isHidden(){ return localStorage.getItem(LS_HIDDEN) === '1'; }
+  function applyHiddenState(){
+    var hidden = isHidden();
+    document.body.classList.toggle('blurred', hidden);
+    var btn = document.getElementById('btn-toggle-privacy');
+    if(btn) btn.textContent = hidden ? '👁️ Mostrar valores' : '🙈 Ocultar valores';
+  }
+
+  function promptDefineKey(msg){
+    var k1 = prompt(msg || 'Defina uma chave para proteger a exibição dos valores:');
+    if(k1 === null) return null;
+    k1 = k1.trim();
+    if(!k1){ alert('A chave não pode ficar em branco.'); return null; }
+    var k2 = prompt('Confirme a chave:');
+    if(k2 === null) return null;
+    if(k1 !== k2.trim()){ alert('As chaves não coincidem. Tente novamente.'); return null; }
+    return k1;
+  }
+
+  function setNewKey(key){
+    return sha256Hex(key).then(function(hash){
+      if(hash){ localStorage.setItem(LS_KEYHASH, hash); return true; }
+      // fallback sem Web Crypto (ex.: contexto não seguro): guarda de forma ofuscada simples
+      localStorage.setItem(LS_KEYHASH, 'plain:'+btoa(unescape(encodeURIComponent(key))));
+      return true;
+    });
+  }
+
+  function checkKey(key){
+    var stored = getStoredKeyHash();
+    if(!stored) return Promise.resolve(false);
+    if(stored.indexOf('plain:')===0){
+      return Promise.resolve(stored === 'plain:'+btoa(unescape(encodeURIComponent(key))));
+    }
+    return sha256Hex(key).then(function(hash){ return hash === stored; });
+  }
+
+  function hideValues(){
+    localStorage.setItem(LS_HIDDEN, '1');
+    applyHiddenState();
+  }
+
+  function revealValues(){
+    if(!hasKeySet()){
+      var novaChave = promptDefineKey('Nenhuma chave definida ainda. Crie uma chave agora para poder ocultar/revelar os valores:');
+      if(novaChave === null) return;
+      setNewKey(novaChave).then(function(){
+        localStorage.setItem(LS_HIDDEN, '0');
+        applyHiddenState();
+      });
+      return;
+    }
+    var tentativa = prompt('Digite a chave para revelar os valores:');
+    if(tentativa === null) return;
+    checkKey(tentativa).then(function(ok){
+      if(ok){
+        localStorage.setItem(LS_HIDDEN, '0');
+        applyHiddenState();
+      } else {
+        alert('Chave incorreta.');
+      }
+    });
+  }
+
+  document.getElementById('btn-toggle-privacy').addEventListener('click', function(){
+    if(isHidden()) revealValues(); else hideValues();
+  });
+
+  document.getElementById('btn-set-key').addEventListener('click', function(){
+    if(hasKeySet()){
+      var atual = prompt('Digite a chave atual para poder alterá-la:');
+      if(atual === null) return;
+      checkKey(atual).then(function(ok){
+        if(!ok){ alert('Chave incorreta.'); return; }
+        var nova = promptDefineKey('Digite a nova chave:');
+        if(nova === null) return;
+        setNewKey(nova).then(function(){ alert('Chave atualizada com sucesso.'); });
+      });
+    } else {
+      var nova2 = promptDefineKey('Defina a chave que será usada para revelar os valores ocultos:');
+      if(nova2 === null) return;
+      setNewKey(nova2).then(function(){ alert('Chave definida com sucesso.'); });
+    }
+  });
+
+  applyHiddenState();
+
+  // ---------- Relatório individual de cobrança ----------
+  function slugify(text){
+    return String(text).normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+  }
+
+  function buildCobrancaHTML(person, q){
+    var totals = quinzenaTotals(q, person.id);
+    var statusVal = q.status[person.id];
+    var linhas = [];
+    q.days.forEach(function(day){
+      var e = day.entries[person.id];
+      var temMovimento;
+      var cols;
+      if(person.type==='simples'){
+        var price = q.prices[person.id].v;
+        var c = calcSimples(e, price);
+        temMovimento = (Number(e.q)||0) !== 0 || (Number(e.dev)||0) !== 0;
+        cols = [fmtDate(day.date), e.q, money(c.saldoDevedor), e.dev, money(c.saldoTotal)];
+      } else {
+        var pa = q.prices[person.id].a, pb = q.prices[person.id].b;
+        var c2 = calcDuplo(e, pa, pb);
+        temMovimento = (Number(e.qc)||0) !== 0 || (Number(e.qb)||0) !== 0 || (Number(e.devc)||0) !== 0 || (Number(e.devb)||0) !== 0;
+        cols = [fmtDate(day.date), e.qc, money(c2.saldoA), e.qb, money(c2.saldoB), e.devc, e.devb, money(c2.saldoTotal)];
+      }
+      if(temMovimento) linhas.push(cols);
+    });
+
+    var headers = person.type==='simples'
+      ? ['Data','Quantidade','Saldo devedor','Devolução','Saldo total']
+      : ['Data','Qtd. '+person.labelA,'Saldo '+person.labelA,'Qtd. '+person.labelB,'Saldo '+person.labelB,'Dev. '+person.labelA,'Dev. '+person.labelB,'Saldo total'];
+    var moneyCols = person.type==='simples' ? [2,4] : [2,4,7];
+
+    var theadHtml = '<tr>'+headers.map(function(h){ return '<th>'+h+'</th>'; }).join('')+'</tr>';
+    var rowsHtml = linhas.length
+      ? linhas.map(function(cols){
+          return '<tr>'+cols.map(function(v,i){
+            var isMoney = moneyCols.indexOf(i) !== -1;
+            return '<td'+(i===0?'':' style="text-align:right"')+'>'+(isMoney ? v : v)+'</td>';
+          }).join('')+'</tr>';
+        }).join('')
+      : '<tr><td colspan="'+headers.length+'" style="text-align:center;color:#888;padding:14px;">Nenhum lançamento nesta quinzena.</td></tr>';
+
+    var qtdTotal = person.type==='simples' ? totals.q : (totals.qc + totals.qb);
+    var geradoEm = new Date().toLocaleString('pt-BR');
+    var statusColor = statusVal === 'PAGO' ? '#22c55e' : '#f43f5e';
+
+    return '<!DOCTYPE html>\n<html lang="pt-BR"><head><meta charset="UTF-8">'+
+      '<meta name="viewport" content="width=device-width, initial-scale=1.0">'+
+      '<title>Cobrança - '+person.name+' - '+q.label+'</title>'+
+      '<style>'+
+      'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:#f4f5f7;color:#1a1c22;margin:0;padding:0;}'+
+      '.sheet{max-width:820px;margin:24px auto;background:#fff;border-radius:12px;box-shadow:0 2px 14px rgba(0,0,0,.08);padding:32px 36px;}'+
+      '.top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1a1c22;padding-bottom:16px;margin-bottom:20px;}'+
+      '.top h1{font-size:19px;margin:0 0 4px;}'+
+      '.top p{margin:0;color:#666;font-size:12.5px;}'+
+      '.pill{display:inline-block;padding:5px 14px;border-radius:999px;font-weight:700;font-size:12px;color:#fff;background:'+statusColor+';}'+
+      '.info{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px;}'+
+      '.info div{background:#f7f8fa;border-radius:8px;padding:10px 14px;}'+
+      '.info .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#888;font-weight:700;margin-bottom:4px;}'+
+      '.info .val{font-size:15px;font-weight:700;}'+
+      'table{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:18px;}'+
+      'th,td{padding:8px 10px;border-bottom:1px solid #e6e8ec;text-align:right;}'+
+      'th:first-child,td:first-child{text-align:left;}'+
+      'th{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#888;font-weight:700;}'+
+      '.total-final{display:flex;justify-content:flex-end;align-items:baseline;gap:10px;border-top:2px solid #1a1c22;padding-top:14px;}'+
+      '.total-final .lbl{font-size:13px;font-weight:700;color:#444;}'+
+      '.total-final .val{font-size:24px;font-weight:800;}'+
+      '.foot{margin-top:26px;color:#999;font-size:11px;text-align:center;}'+
+      '.no-print{text-align:center;margin-top:22px;}'+
+      '.no-print button{font:inherit;font-weight:700;font-size:13px;padding:10px 18px;border-radius:8px;border:none;background:#1a1c22;color:#fff;cursor:pointer;}'+
+      '@media print{.no-print{display:none;} body{background:#fff;} .sheet{box-shadow:none;margin:0;}}'+
+      '</style></head><body>'+
+      '<div class="sheet">'+
+        '<div class="top">'+
+          '<div><h1>Relatório de Cobrança</h1><p>Controle de Débitos por Quinzena</p></div>'+
+          '<span class="pill">'+statusVal+'</span>'+
+        '</div>'+
+        '<div class="info">'+
+          '<div><div class="lbl">Cliente</div><div class="val">'+person.name+'</div></div>'+
+          '<div><div class="lbl">Quinzena</div><div class="val">'+q.label+'</div></div>'+
+          '<div><div class="lbl">Período</div><div class="val">'+fmtDate(q.startDate)+' – '+fmtDate(q.endDate)+'</div></div>'+
+        '</div>'+
+        '<table><thead>'+theadHtml+'</thead><tbody>'+rowsHtml+'</tbody></table>'+
+        '<div class="total-final"><span class="lbl">Total (quantidade: '+qtdTotal+')</span><span class="val">'+money(totals.saldoTotal)+'</span></div>'+
+        '<p class="foot">Vencimento: '+fmtDate(q.dueDate)+' · Relatório gerado em '+geradoEm+'</p>'+
+        '<div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>'+
+      '</div>'+
+      '</body></html>';
+  }
+
+  function downloadCobranca(personId, quinzenaId){
+    var person = getPerson(personId);
+    var q = getQuinzena(quinzenaId) || currentQuinzena();
+    var html = buildCobrancaHTML(person, q);
+    var filename = 'cobranca-'+slugify(person.name)+'-'+slugify(q.label)+'.html';
+    downloadBlob(html, filename, 'text/html');
   }
 
   // Ao focar num campo numérico que está com "0", seleciona o valor —
