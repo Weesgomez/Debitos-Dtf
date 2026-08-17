@@ -52,6 +52,21 @@
   button.ghost:hover{background:var(--panel-2); color:var(--ink);}
   main{max-width:1180px; margin:0 auto; padding:24px 26px 70px;}
 
+  .kpi-row{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px;}
+  @media (max-width:860px){.kpi-row{grid-template-columns:repeat(2,1fr);}}
+  @media (max-width:480px){.kpi-row{grid-template-columns:1fr;}}
+  .kpi-card{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    padding:16px 18px; box-shadow:var(--shadow);
+  }
+  .kpi-label{font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-mute); font-weight:700; margin-bottom:8px;}
+  .kpi-value{font-size:23px; font-weight:700; letter-spacing:-.01em; color:var(--ink);}
+  .kpi-value.neg{color:var(--bad);}
+  .kpi-value.pos{color:var(--ok);}
+  .kpi-sub{font-size:11.5px; color:var(--ink-mute); margin-top:6px;}
+  .kpi-sub.diff-up{color:var(--bad);}
+  .kpi-sub.diff-down{color:var(--ok);}
+
   .quinzena-bar{display:flex; align-items:center; gap:10px; margin-bottom:18px; flex-wrap:wrap;}
   .quinzena-tabs{display:flex; gap:7px; flex-wrap:wrap; flex:1;}
   .qtab{
@@ -72,6 +87,23 @@
   .card h2::before{content:'';width:7px;height:7px;border-radius:2px;background:var(--accent);
     box-shadow:0 0 10px 1px var(--accent-glow); flex:none;}
   .card .sub{color:var(--ink-mute); font-size:12px; margin-bottom:16px;}
+
+  #person-table-wrap, .table-scroll{
+    overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:8px;
+  }
+  #person-table-wrap table, .table-scroll table{ min-width:560px; width:100%; }
+  th:first-child, td:first-child{
+    position:sticky; left:0; background:var(--panel); z-index:1;
+    box-shadow:2px 0 6px -2px rgba(0,0,0,.35);
+  }
+  tr.total-row td:first-child{ background:var(--panel-2); }
+  @media (max-width:600px){
+    .card{padding:16px 14px;}
+    table{font-size:12px;}
+    th, td{padding:7px 5px;}
+    td input{width:48px; padding:5px 6px; font-size:12px;}
+    .kpi-value{font-size:20px;}
+  }
 
   .person-tabs{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; border-bottom:1px solid var(--line); padding-bottom:14px;}
   .ptab{
@@ -143,6 +175,8 @@
     <button class="primary" id="btn-nova-quinzena">+ Nova quinzena</button>
   </div>
 
+  <div class="kpi-row" id="kpi-row"></div>
+
   <div class="card">
     <h2 id="q-title"></h2>
     <div class="sub" id="q-sub"></div>
@@ -157,13 +191,13 @@
   <div class="card">
     <h2>Resumo da quinzena</h2>
     <div class="sub">Totais por pessoa nesta quinzena.</div>
-    <table class="resumo-table" id="resumo-quinzena"></table>
+    <div class="table-scroll"><table class="resumo-table" id="resumo-quinzena"></table></div>
   </div>
 
   <div class="card">
     <h2>Resumo geral (acumulado)</h2>
     <div class="sub">Soma do saldo total de cada pessoa em todas as quinzenas cadastradas.</div>
-    <table class="resumo-table" id="resumo-geral"></table>
+    <div class="table-scroll"><table class="resumo-table" id="resumo-geral"></table></div>
   </div>
 
   <div class="foot-actions"></div>
@@ -392,11 +426,53 @@
     document.getElementById('q-title').textContent = q.label;
     document.getElementById('q-sub').textContent =
       'Período: '+fmtDate(q.startDate)+' a '+fmtDate(q.endDate)+'  ·  Saldo a pagar até '+fmtDate(q.dueDate);
+    renderKpis();
     renderPersonTabs();
     renderPriceRow();
     renderPersonTable();
     renderResumoQuinzena();
     renderResumoGeral();
+  }
+
+  function renderKpis(){
+    var q = currentQuinzena();
+    var totalSaldo=0, totalAberto=0, totalPago=0, pessoasAberto=0, pessoasPagas=0, totalItens=0;
+    PEOPLE.forEach(function(p){
+      var t = quinzenaTotals(q, p.id);
+      var qtd = p.type==='simples' ? t.q : (t.qc+t.qb);
+      totalSaldo += t.saldoTotal;
+      totalItens += qtd;
+      if(q.status[p.id]==='PAGO'){ totalPago += t.saldoTotal; pessoasPagas++; }
+      else { totalAberto += t.saldoTotal; pessoasAberto++; }
+    });
+
+    var diffHtml = '';
+    var idx = state.quinzenas.findIndex(function(qq){ return qq.id===q.id; });
+    if(idx > 0){
+      var prev = state.quinzenas[idx-1];
+      var prevTotal = 0;
+      PEOPLE.forEach(function(p){ prevTotal += quinzenaTotals(prev, p.id).saldoTotal; });
+      var diff = totalSaldo - prevTotal;
+      if(Math.abs(diff) >= 0.005){
+        var cls = diff > 0 ? 'diff-up' : 'diff-down';
+        var arrow = diff > 0 ? '▲' : '▼';
+        diffHtml = '<div class="kpi-sub '+cls+'">'+arrow+' '+money(Math.abs(diff))+' '+(diff>0?'a mais':'a menos')+' que a quinzena anterior</div>';
+      }
+    }
+
+    var wrap = document.getElementById('kpi-row');
+    wrap.innerHTML =
+      '<div class="kpi-card"><div class="kpi-label">Saldo total da quinzena</div>'+
+        '<div class="kpi-value">'+money(totalSaldo)+'</div>'+diffHtml+'</div>'+
+      '<div class="kpi-card"><div class="kpi-label">Em aberto</div>'+
+        '<div class="kpi-value neg">'+money(totalAberto)+'</div>'+
+        '<div class="kpi-sub">'+pessoasAberto+' de '+PEOPLE.length+' pessoas com saldo pendente</div></div>'+
+      '<div class="kpi-card"><div class="kpi-label">Pago</div>'+
+        '<div class="kpi-value pos">'+money(totalPago)+'</div>'+
+        '<div class="kpi-sub">'+pessoasPagas+' de '+PEOPLE.length+' pessoas quitadas</div></div>'+
+      '<div class="kpi-card"><div class="kpi-label">Itens no período</div>'+
+        '<div class="kpi-value">'+totalItens+'</div>'+
+        '<div class="kpi-sub">unidades lançadas nesta quinzena</div></div>';
   }
 
   function renderQuinzenaTabs(){
@@ -436,7 +512,7 @@
       lbl.innerHTML = 'Preço por unidade&nbsp;';
       var inp = document.createElement('input');
       inp.type='number'; inp.step='0.01'; inp.value = q.prices[p.id].v;
-      inp.addEventListener('input', function(){ q.prices[p.id].v = Number(inp.value)||0; renderPersonTable(); renderResumoQuinzena(); renderResumoGeral(); });
+      inp.addEventListener('input', function(){ q.prices[p.id].v = Number(inp.value)||0; renderPersonTable(); renderResumoQuinzena(); renderResumoGeral(); renderKpis(); });
       lbl.appendChild(inp);
       wrap.appendChild(lbl);
     } else {
@@ -444,7 +520,7 @@
       lblA.innerHTML = 'Preço '+p.labelA+'&nbsp;';
       var inpA = document.createElement('input');
       inpA.type='number'; inpA.step='0.01'; inpA.value = q.prices[p.id].a;
-      inpA.addEventListener('input', function(){ q.prices[p.id].a = Number(inpA.value)||0; renderPersonTable(); renderResumoQuinzena(); renderResumoGeral(); });
+      inpA.addEventListener('input', function(){ q.prices[p.id].a = Number(inpA.value)||0; renderPersonTable(); renderResumoQuinzena(); renderResumoGeral(); renderKpis(); });
       lblA.appendChild(inpA);
       wrap.appendChild(lblA);
 
@@ -452,7 +528,7 @@
       lblB.innerHTML = 'Preço '+p.labelB+'&nbsp;';
       var inpB = document.createElement('input');
       inpB.type='number'; inpB.step='0.01'; inpB.value = q.prices[p.id].b;
-      inpB.addEventListener('input', function(){ q.prices[p.id].b = Number(inpB.value)||0; renderPersonTable(); renderResumoQuinzena(); renderResumoGeral(); });
+      inpB.addEventListener('input', function(){ q.prices[p.id].b = Number(inpB.value)||0; renderPersonTable(); renderResumoQuinzena(); renderResumoGeral(); renderKpis(); });
       lblB.appendChild(inpB);
       wrap.appendChild(lblB);
     }
@@ -470,6 +546,7 @@
       q.status[p.id] = sel.value;
       sel.className = 'status-select ' + (sel.value==='PAGO' ? 'pago' : 'nao');
       renderResumoQuinzena();
+      renderKpis();
     });
     statusLbl.appendChild(sel);
     wrap.appendChild(statusLbl);
@@ -532,6 +609,7 @@
           renderPersonTable();
           renderResumoQuinzena();
           renderResumoGeral();
+          renderKpis();
         });
         td.appendChild(inp);
         return td;
@@ -608,6 +686,15 @@
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
   }
+
+  // Ao focar num campo numérico que está com "0", seleciona o valor —
+  // assim digitar já substitui, sem precisar apagar antes.
+  document.addEventListener('focusin', function(ev){
+    var el = ev.target;
+    if(el.tagName === 'INPUT' && el.type === 'number' && el.value === '0'){
+      el.select();
+    }
+  });
 
   document.getElementById('btn-nova-quinzena').addEventListener('click', addNovaQuinzena);
 
