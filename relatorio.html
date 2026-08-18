@@ -25,6 +25,9 @@
   .total-final .lbl{font-size:13px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:.03em;}
   .total-final .val{font-size:26px;font-weight:800;}
   .total-final .dev-tag{display:inline-block;margin-top:5px;font-size:10.5px;font-weight:700;color:#f43f5e;background:rgba(244,63,94,.1);border-radius:999px;padding:2px 9px;text-transform:none;letter-spacing:0;}
+  .qty-breakdown{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+  .qty-item{font-size:12.5px;font-weight:700;color:#333;background:#eef0f3;border-radius:7px;padding:4px 10px;}
+  .qty-item .dev-tag{display:inline;margin:0 0 0 6px;padding:1px 7px;font-size:10px;position:relative;top:-1px;}
   .foot{margin-top:26px;color:#999;font-size:11px;text-align:center;}
   .no-print{text-align:center;margin-top:22px;}
   .no-print button{font:inherit;font-weight:700;font-size:13px;padding:10px 18px;border-radius:8px;border:none;background:#1a1c22;color:#fff;cursor:pointer;}
@@ -55,6 +58,18 @@
 
   function esc(s){
     return String(s==null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function buildTotalLabelHtml(payload){
+    if(payload.bd){
+      var items = payload.bd.map(function(b){
+        var devHtml = b.dev>0 ? ' <span class="dev-tag">&#8617; '+b.dev+'</span>' : '';
+        return '<span class="qty-item">'+b.qtd+' '+esc(b.label)+devHtml+'</span>';
+      }).join('');
+      return '<span class="lbl">Total a pagar</span><div class="qty-breakdown">'+items+'</div>';
+    }
+    return '<span class="lbl">Total a pagar &middot; '+payload.qtd+' unidade'+(payload.qtd===1?'':'s')+'</span>'+
+      (payload.dev>0 ? '<div class="dev-tag">&#8617; '+payload.dev+' devolvida'+(payload.dev===1?'':'s')+'</div>' : '');
   }
 
   function render(payload){
@@ -98,8 +113,7 @@
           '<div><div class="lbl">Período</div><div class="val">'+esc(payload.per)+'</div></div>'+
         '</div>'+
         '<table><thead>'+theadHtml+'</thead><tbody>'+rowsHtml+'</tbody></table>'+
-        '<div class="total-final"><div><span class="lbl">Total a pagar &middot; '+payload.qtd+' unidade'+(payload.qtd===1?'':'s')+'</span>'+
-          (payload.dev>0 ? '<div class="dev-tag">&#8617; '+payload.dev+' devolvida'+(payload.dev===1?'':'s')+'</div>' : '')+
+        '<div class="total-final"><div>'+buildTotalLabelHtml(payload)+
           '</div><span class="val">'+esc(payload.tot)+'</span></div>'+
         pixHtml+
         '<p class="foot">Vencimento: '+esc(payload.due)+' · Relatório gerado em '+geradoEm+'</p>'+
