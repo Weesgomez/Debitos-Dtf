@@ -1069,6 +1069,10 @@
     return !!(state.pixConfig && state.pixConfig.key && state.pixConfig.key.trim());
   }
 
+  function escapeHtmlAttr(s){
+    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
   // ---------- Relatório individual de cobrança ----------
   function slugify(text){
     return String(text).normalize('NFD').replace(/[\u0300-\u036f]/g,'')
@@ -1179,10 +1183,6 @@
         '<p class="foot">Vencimento: '+fmtDate(q.dueDate)+' · Relatório gerado em '+geradoEm+'</p>'+
         '<div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>'+
       '</div>'+
-      (hasPixConfig() ? '<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"><\/script>'+
-        '<script>(function(){var el=document.getElementById("pix-code");if(el&&window.QRCode){QRCode.toDataURL(el.value,{width:220,margin:1},function(err,url){if(!err)document.getElementById("pix-qr").src=url;});}'+
-        'var btn=document.getElementById("pix-copy-btn");if(btn){btn.addEventListener("click",function(){var v=el.value;(navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(v):Promise.reject()).catch(function(){el.select();document.execCommand("copy");}).then(function(){btn.textContent="Copiado!";setTimeout(function(){btn.textContent="Copiar código";},1600);});});}'+
-        '})();<\/script>' : '')+
       '</body></html>';
   }
 
@@ -1194,12 +1194,14 @@
       amount: amount,
       txid: (person.id+'-'+q.id).replace(/[^a-zA-Z0-9]/g,'').slice(0,25) || '***'
     });
+    var qrImgUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=10&data='+encodeURIComponent(payload);
+    var safePayload = escapeHtmlAttr(payload);
     return '<div class="pix-box">'+
       '<div class="pix-title">💠 Pagar via Pix</div>'+
-      '<img id="pix-qr" width="220" height="220" alt="QR Code Pix">'+
+      '<img id="pix-qr" width="240" height="240" alt="QR Code Pix" src="'+qrImgUrl+'">'+
       '<div class="pix-copy-wrap">'+
-        '<input id="pix-code" readonly value="'+payload+'">'+
-        '<button type="button" id="pix-copy-btn">Copiar código</button>'+
+        '<input id="pix-code" readonly value="'+safePayload+'" onclick="this.select();">'+
+        '<button type="button" onclick="var el=document.getElementById(\'pix-code\');el.select();try{document.execCommand(\'copy\');}catch(e){}this.textContent=\'Copiado!\';var b=this;setTimeout(function(){b.textContent=\'Copiar código\';},1600);">Copiar código</button>'+
       '</div>'+
       '<div class="pix-note">Abra o app do seu banco, escolha Pix Copia e Cola (ou aponte a câmera pro QR) e confirme o valor de '+money(amount)+'.</div>'+
     '</div>';
