@@ -1244,12 +1244,16 @@
   }
 
   // ---------- Cobrança via WhatsApp (link wa.me, abre com mensagem pronta) ----------
-  function buildWhatsAppMessage(person, q, amount){
+  function buildWhatsAppMessage(person, q, amount, reportUrl){
     var lines = [];
     lines.push('Olá, '+person.name+'! 👋');
     lines.push('Segue o resumo da '+q.label+' (venc. '+fmtDate(q.dueDate)+'):');
     lines.push('Total: '+money(amount));
-    if(hasPixConfig()){
+    lines.push('');
+    if(reportUrl){
+      lines.push('Veja o relatório completo e pague via Pix aqui:');
+      lines.push(reportUrl);
+    } else if(hasPixConfig()){
       var payload = buildPixPayload({
         key: state.pixConfig.key,
         name: state.pixConfig.name,
@@ -1257,11 +1261,24 @@
         amount: amount,
         txid: (person.id+'-'+q.id).replace(/[^a-zA-Z0-9]/g,'').slice(0,25) || '***'
       });
-      lines.push('');
       lines.push('Pix Copia e Cola (cole no app do banco):');
       lines.push(payload);
     }
     return lines.join('\n');
+  }
+
+  function uploadInvoiceAndGetUrl(personId, quinzenaId){
+    var person = getPerson(personId);
+    var q = getQuinzena(quinzenaId) || currentQuinzena();
+    var html = buildCobrancaHTML(person, q);
+    var path = q.id+'/'+person.id+'-'+Date.now()+'.html';
+    return supabaseClient.storage.from('invoices')
+      .upload(path, new Blob([html], {type:'text/html'}), { contentType:'text/html', upsert:true })
+      .then(function(res){
+        if(res.error) throw res.error;
+        var pub = supabaseClient.storage.from('invoices').getPublicUrl(path);
+        return pub.data.publicUrl;
+      });
   }
 
   function sendWhatsApp(personId, quinzenaId){
@@ -1273,9 +1290,28 @@
       return;
     }
     var totals = quinzenaTotals(q, personId);
-    var msg = buildWhatsAppMessage(person, q, totals.saldoTotal);
-    var url = 'https://wa.me/'+phone+'?text='+encodeURIComponent(msg);
-    window.open(url, '_blank');
+
+    // Abre a aba em branco já, de forma síncrona (dentro do clique) — navegadores bloqueiam
+    // popups abertos depois de uma operação assíncrona (como o upload abaixo).
+    var winRef = (supabaseClient && currentSession) ? window.open('', '_blank') : null;
+
+    function openWith(msg){
+      var url = 'https://wa.me/'+phone+'?text='+encodeURIComponent(msg);
+      if(winRef){ winRef.location.href = url; }
+      else { window.open(url, '_blank'); }
+    }
+
+    if(!supabaseClient || !currentSession){
+      openWith(buildWhatsAppMessage(person, q, totals.saldoTotal));
+      return;
+    }
+
+    uploadInvoiceAndGetUrl(personId, quinzenaId).then(function(url){
+      openWith(buildWhatsAppMessage(person, q, totals.saldoTotal, url));
+    }).catch(function(err){
+      console.error('Falha ao gerar link do relatório, mandando código Pix em texto:', err);
+      openWith(buildWhatsAppMessage(person, q, totals.saldoTotal));
+    });
   }
 
   // Ao focar num campo numérico que está com "0", seleciona o valor —
