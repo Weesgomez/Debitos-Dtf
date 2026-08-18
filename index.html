@@ -215,6 +215,8 @@
   .hist-item:last-child{border-bottom:none;}
   .hist-item .when{font-size:12.5px; color:var(--ink);}
   .modal-close{display:flex; justify-content:flex-end; margin-top:14px;}
+  #pix-modal .auth-field{margin-bottom:14px;}
+  #pix-modal .sub{margin-bottom:16px;}
 </style>
 </head>
 <body>
@@ -229,6 +231,7 @@
     <button class="ghost icon-btn" id="btn-history" title="Ver versões salvas anteriormente">🕓 Histórico</button>
     <button class="ghost icon-btn" id="btn-toggle-privacy" title="Borrar/mostrar os valores em R$">🙈 Ocultar valores</button>
     <button class="ghost icon-btn" id="btn-set-key" title="Definir ou alterar a chave usada para revelar os valores">🔑 Chave</button>
+    <button class="ghost icon-btn" id="btn-pix-config" title="Configurar sua chave Pix para gerar cobrança nos relatórios">💠 Pix</button>
     <button class="ghost" id="btn-import">⬆️ Importar dados</button>
     <input type="file" id="file-import" accept="application/json">
     <button id="btn-export">⬇️ Exportar dados (.json)</button>
@@ -304,6 +307,30 @@
     <div class="sub">Cada vez que os dados são salvos, uma cópia fica guardada aqui. Você pode restaurar qualquer uma.</div>
     <div id="history-list"></div>
     <div class="modal-close"><button class="ghost" id="btn-history-close">Fechar</button></div>
+  </div>
+</div>
+
+<div class="modal-backdrop hidden" id="pix-modal">
+  <div class="modal-box">
+    <h2>Configurar Pix</h2>
+    <div class="sub">Esses dados são usados para gerar o QR code de pagamento nos relatórios de cobrança. Ficam salvos na nuvem junto com seus débitos.</div>
+    <div class="auth-field">
+      <label>Nome do recebedor</label>
+      <input type="text" id="pix-name" maxlength="25" placeholder="Ex: Wesley Gomes">
+    </div>
+    <div class="auth-field">
+      <label>Cidade</label>
+      <input type="text" id="pix-city" maxlength="15" placeholder="Ex: Santo Andre">
+    </div>
+    <div class="auth-field">
+      <label>Chave Pix</label>
+      <input type="text" id="pix-key" placeholder="CPF, e-mail, telefone ou chave aleatória">
+    </div>
+    <div class="auth-msg" id="pix-config-msg"></div>
+    <div class="modal-close">
+      <button class="ghost" id="btn-pix-config-close">Fechar</button>
+      <button class="primary" id="btn-pix-config-save">Salvar</button>
+    </div>
   </div>
 </div>
 
@@ -961,6 +988,87 @@
 
   applyHiddenState();
 
+  // ---------- Configuração da chave Pix (modal) ----------
+  function openPixModal(){
+    var cfg = state.pixConfig || {};
+    document.getElementById('pix-name').value = cfg.name || '';
+    document.getElementById('pix-city').value = cfg.city || '';
+    document.getElementById('pix-key').value = cfg.key || '';
+    document.getElementById('pix-config-msg').textContent = '';
+    document.getElementById('pix-config-msg').className = 'auth-msg';
+    document.getElementById('pix-modal').classList.remove('hidden');
+  }
+  function closePixModal(){
+    document.getElementById('pix-modal').classList.add('hidden');
+  }
+  document.getElementById('btn-pix-config').addEventListener('click', openPixModal);
+  document.getElementById('btn-pix-config-close').addEventListener('click', closePixModal);
+  document.getElementById('btn-pix-config-save').addEventListener('click', function(){
+    var name = document.getElementById('pix-name').value.trim();
+    var city = document.getElementById('pix-city').value.trim();
+    var key = document.getElementById('pix-key').value.trim();
+    var msgEl = document.getElementById('pix-config-msg');
+    if(!key){ msgEl.textContent = 'Preencha a chave Pix.'; msgEl.className = 'auth-msg err'; return; }
+    state.pixConfig = { name: name, city: city, key: key };
+    scheduleSave();
+    msgEl.textContent = 'Salvo! O QR code agora vai aparecer nos relatórios de cobrança.';
+    msgEl.className = 'auth-msg ok';
+  });
+
+  // ---------- Pix: geração do código "copia e cola" (BR Code / EMV) ----------
+  function pixTLV(id, value){
+    var len = String(value).length;
+    var lenStr = len<10 ? '0'+len : ''+len;
+    return id + lenStr + value;
+  }
+
+  function crc16ccitt(str){
+    var crc = 0xFFFF;
+    for(var i=0;i<str.length;i++){
+      crc ^= (str.charCodeAt(i) << 8);
+      for(var j=0;j<8;j++){
+        crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xFFFF : (crc << 1) & 0xFFFF;
+      }
+    }
+    var hex = crc.toString(16).toUpperCase();
+    while(hex.length < 4) hex = '0'+hex;
+    return hex;
+  }
+
+  function sanitizePixText(s, maxLen, fallback){
+    s = String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    s = s.replace(/[^a-zA-Z0-9 ]/g,'').trim();
+    if(maxLen) s = s.slice(0, maxLen);
+    return s || fallback;
+  }
+
+  function buildPixPayload(opts){
+    var key = String(opts.key||'').trim();
+    var name = sanitizePixText(opts.name, 25, 'RECEBEDOR');
+    var city = sanitizePixText(opts.city, 15, 'BRASIL');
+    var amount = (Math.round(Number(opts.amount||0)*100)/100).toFixed(2);
+    var txid = String(opts.txid||'***').replace(/[^a-zA-Z0-9*]/g,'').slice(0,25) || '***';
+
+    var merchantAccountInfo = pixTLV('00','br.gov.bcb.pix') + pixTLV('01', key);
+    var payload =
+      pixTLV('00','01') +
+      pixTLV('26', merchantAccountInfo) +
+      pixTLV('52','0000') +
+      pixTLV('53','986') +
+      pixTLV('54', amount) +
+      pixTLV('58','BR') +
+      pixTLV('59', name) +
+      pixTLV('60', city) +
+      pixTLV('62', pixTLV('05', txid));
+
+    payload += '6304';
+    return payload + crc16ccitt(payload);
+  }
+
+  function hasPixConfig(){
+    return !!(state.pixConfig && state.pixConfig.key && state.pixConfig.key.trim());
+  }
+
   // ---------- Relatório individual de cobrança ----------
   function slugify(text){
     return String(text).normalize('NFD').replace(/[\u0300-\u036f]/g,'')
@@ -1043,8 +1151,15 @@
       '.foot{margin-top:26px;color:#999;font-size:11px;text-align:center;page-break-inside:avoid;break-inside:avoid;}'+
       '.no-print{text-align:center;margin-top:22px;}'+
       '.no-print button{font:inherit;font-weight:700;font-size:13px;padding:10px 18px;border-radius:8px;border:none;background:#1a1c22;color:#fff;cursor:pointer;}'+
+      '.pix-box{margin-top:18px;border:1px dashed #c7cbd4;border-radius:10px;padding:18px;text-align:center;page-break-inside:avoid;break-inside:avoid;}'+
+      '.pix-box .pix-title{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#666;margin-bottom:10px;}'+
+      '.pix-box img{border-radius:8px;background:#fff;padding:6px;border:1px solid #e6e8ec;}'+
+      '.pix-copy-wrap{display:flex;gap:8px;max-width:420px;margin:12px auto 0;}'+
+      '.pix-copy-wrap input{flex:1;font-size:11px;padding:8px 10px;border-radius:7px;border:1px solid #d7dae0;color:#444;background:#f7f8fa;}'+
+      '.pix-copy-wrap button{font:inherit;font-weight:700;font-size:12px;padding:8px 14px;border-radius:7px;border:none;background:#1a1c22;color:#fff;cursor:pointer;white-space:nowrap;}'+
+      '.pix-note{font-size:11px;color:#999;margin-top:8px;}'+
       '*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
-      '@media print{.no-print{display:none;} body{background:#fff;} .sheet{box-shadow:none;margin:0;max-width:none;}}'+
+      '@media print{.no-print{display:none;} .pix-copy-wrap button{display:none;} body{background:#fff;} .sheet{box-shadow:none;margin:0;max-width:none;}}'+
       '</style></head><body>'+
       '<div class="sheet">'+
         '<div class="top">'+
@@ -1060,10 +1175,34 @@
         '<div class="total-final"><div><span class="lbl">Total a pagar &middot; '+qtdLiquida+' unidade'+(qtdLiquida===1?'':'s')+'</span>'+
           (qtdDevolvida>0 ? '<div class="dev-tag">&#8617; '+qtdDevolvida+' devolvida'+(qtdDevolvida===1?'':'s')+'</div>' : '')+
           '</div><span class="val">'+money(totals.saldoTotal)+'</span></div>'+
+        (hasPixConfig() ? buildPixBoxHTML(person, q, totals.saldoTotal) : '')+
         '<p class="foot">Vencimento: '+fmtDate(q.dueDate)+' · Relatório gerado em '+geradoEm+'</p>'+
         '<div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>'+
       '</div>'+
+      (hasPixConfig() ? '<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"><\/script>'+
+        '<script>(function(){var el=document.getElementById("pix-code");if(el&&window.QRCode){QRCode.toDataURL(el.value,{width:220,margin:1},function(err,url){if(!err)document.getElementById("pix-qr").src=url;});}'+
+        'var btn=document.getElementById("pix-copy-btn");if(btn){btn.addEventListener("click",function(){var v=el.value;(navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(v):Promise.reject()).catch(function(){el.select();document.execCommand("copy");}).then(function(){btn.textContent="Copiado!";setTimeout(function(){btn.textContent="Copiar código";},1600);});});}'+
+        '})();<\/script>' : '')+
       '</body></html>';
+  }
+
+  function buildPixBoxHTML(person, q, amount){
+    var payload = buildPixPayload({
+      key: state.pixConfig.key,
+      name: state.pixConfig.name,
+      city: state.pixConfig.city,
+      amount: amount,
+      txid: (person.id+'-'+q.id).replace(/[^a-zA-Z0-9]/g,'').slice(0,25) || '***'
+    });
+    return '<div class="pix-box">'+
+      '<div class="pix-title">💠 Pagar via Pix</div>'+
+      '<img id="pix-qr" width="220" height="220" alt="QR Code Pix">'+
+      '<div class="pix-copy-wrap">'+
+        '<input id="pix-code" readonly value="'+payload+'">'+
+        '<button type="button" id="pix-copy-btn">Copiar código</button>'+
+      '</div>'+
+      '<div class="pix-note">Abra o app do seu banco, escolha Pix Copia e Cola (ou aponte a câmera pro QR) e confirme o valor de '+money(amount)+'.</div>'+
+    '</div>';
   }
 
   function downloadCobranca(personId, quinzenaId){
