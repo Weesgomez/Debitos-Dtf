@@ -200,6 +200,11 @@
   .save-status.saving .dot{background:var(--accent); box-shadow:0 0 6px 1px var(--accent-glow);}
   .save-status.saved .dot{background:var(--ok);}
   .save-status.error .dot{background:var(--bad);}
+  .auth-links{text-align:center; margin-top:14px; display:flex; flex-direction:column; gap:8px;}
+  .auth-links a{color:var(--ink-mute); font-size:11.5px; cursor:pointer;}
+  .auth-links a:hover{color:var(--ink-soft);}
+  .auth-form{display:block;}
+  .auth-form.hidden{display:none;}
 
   .modal-backdrop{position:fixed; inset:0; z-index:90; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; padding:20px;}
   .modal-backdrop.hidden{display:none;}
@@ -234,24 +239,62 @@
 
 <div id="auth-screen">
   <div class="auth-card">
-    <h2 id="auth-title">Entrar</h2>
-    <div class="sub" id="auth-sub">Faça login pra acessar e salvar os débitos na nuvem.</div>
-    <div class="auth-field">
-      <label>E-mail</label>
-      <input type="email" id="auth-email" autocomplete="username">
+
+    <div class="auth-form" id="auth-form-signin">
+      <h2 id="auth-title">Entrar</h2>
+      <div class="sub">Faça login pra acessar e salvar os débitos na nuvem.</div>
+      <div class="auth-field">
+        <label>E-mail</label>
+        <input type="email" id="auth-email" autocomplete="username">
+      </div>
+      <div class="auth-field">
+        <label>Senha</label>
+        <input type="password" id="auth-password" autocomplete="current-password">
+      </div>
+      <div class="auth-actions">
+        <button class="ghost" id="btn-auth-signup">Criar conta</button>
+        <button class="primary" id="btn-auth-signin">Entrar</button>
+      </div>
+      <div class="auth-msg" id="auth-msg"></div>
+      <div class="auth-links">
+        <a id="link-forgot-password">Esqueci minha senha</a>
+        <a id="link-skip-auth">Continuar sem login (modo local, não salva na nuvem)</a>
+      </div>
     </div>
-    <div class="auth-field">
-      <label>Senha</label>
-      <input type="password" id="auth-password" autocomplete="current-password">
+
+    <div class="auth-form hidden" id="auth-form-forgot">
+      <h2>Redefinir senha</h2>
+      <div class="sub">Informe seu e-mail. Vamos enviar um link para você criar uma senha nova — seus débitos salvos não são alterados.</div>
+      <div class="auth-field">
+        <label>E-mail</label>
+        <input type="email" id="forgot-email" autocomplete="username">
+      </div>
+      <div class="auth-actions">
+        <button class="primary" id="btn-forgot-send" style="flex:1;">Enviar link de redefinição</button>
+      </div>
+      <div class="auth-msg" id="forgot-msg"></div>
+      <div class="auth-links">
+        <a id="link-back-to-signin">Voltar para o login</a>
+      </div>
     </div>
-    <div class="auth-actions">
-      <button class="ghost" id="btn-auth-signup">Criar conta</button>
-      <button class="primary" id="btn-auth-signin">Entrar</button>
+
+    <div class="auth-form hidden" id="auth-form-recovery">
+      <h2>Criar nova senha</h2>
+      <div class="sub">Você clicou no link de redefinição. Escolha uma nova senha para sua conta — seus débitos salvos continuam intactos.</div>
+      <div class="auth-field">
+        <label>Nova senha</label>
+        <input type="password" id="recovery-password" autocomplete="new-password">
+      </div>
+      <div class="auth-field">
+        <label>Confirmar nova senha</label>
+        <input type="password" id="recovery-password-confirm" autocomplete="new-password">
+      </div>
+      <div class="auth-actions">
+        <button class="primary" id="btn-recovery-save" style="flex:1;">Salvar nova senha</button>
+      </div>
+      <div class="auth-msg" id="recovery-msg"></div>
     </div>
-    <div class="auth-msg" id="auth-msg"></div>
-    <div style="text-align:center;margin-top:14px;">
-      <a href="#" id="link-skip-auth" style="color:var(--ink-mute);font-size:11.5px;">Continuar sem login (modo local, não salva na nuvem)</a>
-    </div>
+
   </div>
 </div>
 
@@ -1080,6 +1123,7 @@
   // ---------- Nuvem (Supabase): login, salvar automático e histórico de versões ----------
   var SUPABASE_URL = 'https://rvmbsqrmrkhegdophfpu.supabase.co';
   var SUPABASE_KEY = 'sb_publishable_87-6Lrr7F59aAl1KT_AV2w_WLl6C9of';
+  var SITE_URL = 'https://weesgomez.github.io/Debitos-Dtf/';
   var supabaseClient = null;
   if(window.supabase && typeof window.supabase.createClient === 'function'){
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -1088,6 +1132,7 @@
   var currentSession = null;
   var saveTimer = null;
   var lastSavedSnapshot = null;
+  var inPasswordRecovery = false;
 
   function setSaveStatus(cls, text){
     var el = document.getElementById('save-status');
@@ -1102,6 +1147,12 @@
     el.className = 'auth-msg' + (cls ? ' '+cls : '');
   }
 
+  function setFormMsg(elId, text, cls){
+    var el = document.getElementById(elId);
+    el.textContent = text || '';
+    el.className = 'auth-msg' + (cls ? ' '+cls : '');
+  }
+
   function showAuthScreen(){
     document.getElementById('auth-screen').classList.remove('hidden');
     document.getElementById('main-app').classList.remove('ready');
@@ -1109,6 +1160,12 @@
   function hideAuthScreen(){
     document.getElementById('auth-screen').classList.add('hidden');
     document.getElementById('main-app').classList.add('ready');
+  }
+
+  function showAuthForm(which){
+    ['auth-form-signin','auth-form-forgot','auth-form-recovery'].forEach(function(id){
+      document.getElementById(id).classList.toggle('hidden', id !== which);
+    });
   }
 
   function scheduleSave(){
@@ -1176,6 +1233,7 @@
     currentSession = null;
     lastSavedSnapshot = null;
     showAuthScreen();
+    showAuthForm('auth-form-signin');
     setAuthMsg('', '');
   }
 
@@ -1219,6 +1277,50 @@
       if(res.error){ setAuthMsg('Não foi possível criar a conta: '+res.error.message, 'err'); return; }
       if(res.data.session){ return onAuthenticated(res.data.session); }
       setAuthMsg('Conta criada! Verifique seu e-mail pra confirmar antes de entrar.', 'ok');
+    });
+  });
+
+  // ---- Esqueci minha senha ----
+  document.getElementById('link-forgot-password').addEventListener('click', function(ev){
+    ev.preventDefault();
+    var currentEmail = document.getElementById('auth-email').value.trim();
+    document.getElementById('forgot-email').value = currentEmail;
+    setFormMsg('forgot-msg', '', '');
+    showAuthForm('auth-form-forgot');
+  });
+
+  document.getElementById('link-back-to-signin').addEventListener('click', function(ev){
+    ev.preventDefault();
+    showAuthForm('auth-form-signin');
+  });
+
+  document.getElementById('btn-forgot-send').addEventListener('click', function(){
+    if(!supabaseClient){ setFormMsg('forgot-msg', 'Sem conexão com a nuvem no momento.', 'err'); return; }
+    var email = document.getElementById('forgot-email').value.trim();
+    if(!email){ setFormMsg('forgot-msg', 'Preencha o e-mail.', 'err'); return; }
+    setFormMsg('forgot-msg', 'Enviando…', '');
+    supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: SITE_URL }).then(function(res){
+      if(res.error){ setFormMsg('forgot-msg', 'Não foi possível enviar: '+res.error.message, 'err'); return; }
+      setFormMsg('forgot-msg', 'Se esse e-mail tiver uma conta, enviamos um link de redefinição. Confira também o spam.', 'ok');
+    });
+  });
+
+  // ---- Definir nova senha (após clicar no link recebido por e-mail) ----
+  document.getElementById('btn-recovery-save').addEventListener('click', function(){
+    if(!supabaseClient) return;
+    var p1 = document.getElementById('recovery-password').value;
+    var p2 = document.getElementById('recovery-password-confirm').value;
+    if(!p1 || p1.length < 6){ setFormMsg('recovery-msg', 'A senha precisa ter pelo menos 6 caracteres.', 'err'); return; }
+    if(p1 !== p2){ setFormMsg('recovery-msg', 'As senhas não coincidem.', 'err'); return; }
+    setFormMsg('recovery-msg', 'Salvando…', '');
+    supabaseClient.auth.updateUser({ password: p1 }).then(function(res){
+      if(res.error){ setFormMsg('recovery-msg', 'Não foi possível salvar: '+res.error.message, 'err'); return; }
+      inPasswordRecovery = false;
+      setFormMsg('recovery-msg', 'Senha atualizada! Entrando…', 'ok');
+      supabaseClient.auth.getSession().then(function(sres){
+        var session = sres.data && sres.data.session;
+        if(session){ onAuthenticated(session); }
+      });
     });
   });
 
@@ -1275,13 +1377,21 @@
   // ---------- Bootstrap ----------
   if(supabaseClient){
     supabaseClient.auth.onAuthStateChange(function(event, session){
+      if(event === 'PASSWORD_RECOVERY'){
+        inPasswordRecovery = true;
+        showAuthScreen();
+        showAuthForm('auth-form-recovery');
+        setFormMsg('recovery-msg', '', '');
+        return;
+      }
+      if(inPasswordRecovery) return; // aguarda o usuário definir a nova senha antes de entrar no app
       if(event === 'SIGNED_IN' && session && !currentSession){ onAuthenticated(session); }
       else if(event === 'SIGNED_OUT'){ onSignedOut(); }
     });
     supabaseClient.auth.getSession().then(function(res){
       var session = res.data && res.data.session;
-      if(session){ onAuthenticated(session); }
-      else { showAuthScreen(); }
+      if(session && !inPasswordRecovery){ onAuthenticated(session); }
+      else if(!inPasswordRecovery){ showAuthScreen(); showAuthForm('auth-form-signin'); }
     }).catch(function(){
       bootLocalOnly('Não foi possível conectar à nuvem — modo local');
     });
