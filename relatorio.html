@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relatório de Cobrança</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:#f4f5f7;color:#1a1c22;margin:0;padding:0;}
+  .sheet{max-width:820px;margin:24px auto;background:#fff;border-radius:12px;box-shadow:0 2px 14px rgba(0,0,0,.08);padding:32px 36px;}
+  .top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1a1c22;padding-bottom:16px;margin-bottom:20px;}
+  .top h1{font-size:19px;margin:0 0 4px;}
+  .top p{margin:0;color:#666;font-size:12.5px;}
+  .pill{display:inline-block;padding:5px 14px;border-radius:999px;font-weight:700;font-size:12px;color:#fff;}
+  .pill.pago{background:#22c55e;}
+  .pill.nao{background:#f43f5e;}
+  .info{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px;}
+  .info div{background:#f7f8fa;border-radius:8px;padding:10px 14px;}
+  .info .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#888;font-weight:700;margin-bottom:4px;}
+  .info .val{font-size:15px;font-weight:700;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:18px;}
+  th,td{padding:8px 10px;border-bottom:1px solid #e6e8ec;text-align:right;}
+  th:first-child,td:first-child{text-align:left;}
+  th{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#888;font-weight:700;}
+  .total-final{display:flex;justify-content:space-between;align-items:center;gap:10px;border:2px solid #1a1c22;border-radius:10px;padding:14px 18px;margin-top:6px;background:#f7f8fa;}
+  .total-final .lbl{font-size:13px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:.03em;}
+  .total-final .val{font-size:26px;font-weight:800;}
+  .total-final .dev-tag{display:inline-block;margin-top:5px;font-size:10.5px;font-weight:700;color:#f43f5e;background:rgba(244,63,94,.1);border-radius:999px;padding:2px 9px;text-transform:none;letter-spacing:0;}
+  .foot{margin-top:26px;color:#999;font-size:11px;text-align:center;}
+  .no-print{text-align:center;margin-top:22px;}
+  .no-print button{font:inherit;font-weight:700;font-size:13px;padding:10px 18px;border-radius:8px;border:none;background:#1a1c22;color:#fff;cursor:pointer;}
+  .pix-box{margin-top:18px;border:1px dashed #c7cbd4;border-radius:10px;padding:18px;text-align:center;}
+  .pix-box .pix-title{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#666;margin-bottom:10px;}
+  .pix-box img{border-radius:8px;background:#fff;padding:6px;border:1px solid #e6e8ec;}
+  .pix-copy-wrap{display:flex;gap:8px;max-width:420px;margin:12px auto 0;}
+  .pix-copy-wrap input{flex:1;font-size:11px;padding:8px 10px;border-radius:7px;border:1px solid #d7dae0;color:#444;background:#f7f8fa;}
+  .pix-copy-wrap button{font:inherit;font-weight:700;font-size:12px;padding:8px 14px;border-radius:7px;border:none;background:#1a1c22;color:#fff;cursor:pointer;white-space:nowrap;}
+  .pix-note{font-size:11px;color:#999;margin-top:8px;}
+  .error-box{max-width:420px;margin:60px auto;text-align:center;color:#666;font-size:14px;padding:0 20px;}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  @media print{.no-print{display:none;} .pix-copy-wrap button{display:none;} body{background:#fff;} .sheet{box-shadow:none;margin:0;max-width:none;}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  function base64UrlDecode(str){
+    var b64 = str.replace(/-/g,'+').replace(/_/g,'/');
+    while(b64.length % 4) b64 += '=';
+    return decodeURIComponent(escape(atob(b64)));
+  }
+
+  function esc(s){
+    return String(s==null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function render(payload){
+    var statusClass = payload.st === 'PAGO' ? 'pago' : 'nao';
+
+    var theadHtml = '<tr>'+payload.h.map(function(h){ return '<th>'+esc(h)+'</th>'; }).join('')+'</tr>';
+    var rowsHtml = (payload.rows && payload.rows.length)
+      ? payload.rows.map(function(cols){
+          return '<tr>'+cols.map(function(v,i){
+            return '<td'+(i===0?'':' style="text-align:right"')+'>'+esc(v)+'</td>';
+          }).join('')+'</tr>';
+        }).join('')
+      : '<tr><td colspan="'+payload.h.length+'" style="text-align:center;color:#888;padding:14px;">Nenhum lançamento nesta quinzena.</td></tr>';
+
+    var pixHtml = '';
+    if(payload.pix){
+      var qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=10&data='+encodeURIComponent(payload.pix);
+      pixHtml =
+        '<div class="pix-box">'+
+          '<div class="pix-title">💠 Pagar via Pix</div>'+
+          '<img id="pix-qr" width="240" height="240" alt="QR Code Pix" src="'+qrUrl+'">'+
+          '<div class="pix-copy-wrap">'+
+            '<input id="pix-code" readonly value="'+esc(payload.pix)+'" onclick="this.select();">'+
+            '<button type="button" id="pix-copy-btn">Copiar código</button>'+
+          '</div>'+
+          '<div class="pix-note">Abra o app do seu banco, escolha Pix Copia e Cola (ou aponte a câmera pro QR) e confirme o valor de '+esc(payload.tot)+'.</div>'+
+        '</div>';
+    }
+
+    var geradoEm = new Date().toLocaleString('pt-BR');
+
+    document.getElementById('app').innerHTML =
+      '<div class="sheet">'+
+        '<div class="top">'+
+          '<div><h1>Relatório de Cobrança</h1><p>Controle de Débitos por Quinzena</p></div>'+
+          '<span class="pill '+statusClass+'">'+esc(payload.st)+'</span>'+
+        '</div>'+
+        '<div class="info">'+
+          '<div><div class="lbl">Cliente</div><div class="val">'+esc(payload.p)+'</div></div>'+
+          '<div><div class="lbl">Quinzena</div><div class="val">'+esc(payload.q)+'</div></div>'+
+          '<div><div class="lbl">Período</div><div class="val">'+esc(payload.per)+'</div></div>'+
+        '</div>'+
+        '<table><thead>'+theadHtml+'</thead><tbody>'+rowsHtml+'</tbody></table>'+
+        '<div class="total-final"><div><span class="lbl">Total a pagar &middot; '+payload.qtd+' unidade'+(payload.qtd===1?'':'s')+'</span>'+
+          (payload.dev>0 ? '<div class="dev-tag">&#8617; '+payload.dev+' devolvida'+(payload.dev===1?'':'s')+'</div>' : '')+
+          '</div><span class="val">'+esc(payload.tot)+'</span></div>'+
+        pixHtml+
+        '<p class="foot">Vencimento: '+esc(payload.due)+' · Relatório gerado em '+geradoEm+'</p>'+
+        '<div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>'+
+      '</div>';
+
+    var copyBtn = document.getElementById('pix-copy-btn');
+    if(copyBtn){
+      copyBtn.addEventListener('click', function(){
+        var el = document.getElementById('pix-code');
+        el.select();
+        try{ document.execCommand('copy'); }catch(e){}
+        copyBtn.textContent = 'Copiado!';
+        setTimeout(function(){ copyBtn.textContent = 'Copiar código'; }, 1600);
+      });
+    }
+  }
+
+  function renderError(){
+    document.getElementById('app').innerHTML =
+      '<div class="error-box">'+
+        '<p>Não foi possível abrir este relatório. O link pode estar incompleto — peça pra reenviarem.</p>'+
+      '</div>';
+  }
+
+  try{
+    var hash = window.location.hash || '';
+    var match = hash.match(/[#&]d=([^&]+)/);
+    if(!match){ renderError(); return; }
+    var payload = JSON.parse(base64UrlDecode(match[1]));
+    render(payload);
+  }catch(e){
+    console.error('Erro ao renderizar relatório:', e);
+    renderError();
+  }
+})();
+</script>
+</body>
+</html>
