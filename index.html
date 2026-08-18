@@ -720,12 +720,34 @@
     statusLbl.appendChild(sel);
     wrap.appendChild(statusLbl);
 
+    var waLbl = document.createElement('label');
+    waLbl.innerHTML = 'WhatsApp&nbsp;';
+    var waInp = document.createElement('input');
+    waInp.type = 'tel';
+    waInp.placeholder = '5511999999999';
+    waInp.style.width = '150px';
+    waInp.value = (state.phones && state.phones[p.id]) || '';
+    waInp.addEventListener('input', function(){
+      if(!state.phones) state.phones = {};
+      state.phones[p.id] = waInp.value.replace(/\D/g,'');
+      scheduleSave();
+    });
+    waLbl.appendChild(waInp);
+    wrap.appendChild(waLbl);
+
     var btnReport = document.createElement('button');
     btnReport.type = 'button';
     btnReport.className = 'btn-mini';
     btnReport.textContent = '🧾 Relatório de cobrança de '+p.name;
     btnReport.addEventListener('click', function(){ downloadCobranca(p.id, q.id); });
     wrap.appendChild(btnReport);
+
+    var btnWhats = document.createElement('button');
+    btnWhats.type = 'button';
+    btnWhats.className = 'btn-mini';
+    btnWhats.textContent = '📲 Cobrar no WhatsApp';
+    btnWhats.addEventListener('click', function(){ sendWhatsApp(p.id, q.id); });
+    wrap.appendChild(btnWhats);
   }
 
   function renderPersonTable(){
@@ -842,13 +864,19 @@
       var tagClass = statusVal==='PAGO' ? 'pago' : 'nao';
       rows.push('<tr><td>'+p.name+'</td><td>'+qtd+'</td><td>'+dev+'</td><td><span class="money">'+money(saldo)+'</span></td>'+
                  '<td><span class="tag '+tagClass+'">'+statusVal+'</span></td>'+
-                 '<td><button type="button" class="btn-mini btn-cobranca" data-person="'+p.id+'" title="Baixar relatório de cobrança de '+p.name+'">🧾 Baixar</button></td></tr>');
+                 '<td><button type="button" class="btn-mini btn-cobranca" data-person="'+p.id+'" title="Baixar relatório de cobrança de '+p.name+'">🧾 Baixar</button> '+
+                 '<button type="button" class="btn-mini btn-whatsapp" data-person="'+p.id+'" title="Cobrar '+p.name+' no WhatsApp">📲</button></td></tr>');
     });
     rows.push('<tr class="total-row"><td>TOTAL</td><td></td><td></td><td><span class="money">'+money(grandTotal)+'</span></td><td></td><td></td></tr>');
     table.innerHTML = rows.join('');
     table.querySelectorAll('.btn-cobranca').forEach(function(btn){
       btn.addEventListener('click', function(){
         downloadCobranca(btn.getAttribute('data-person'), q.id);
+      });
+    });
+    table.querySelectorAll('.btn-whatsapp').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        sendWhatsApp(btn.getAttribute('data-person'), q.id);
       });
     });
   }
@@ -1213,6 +1241,41 @@
     var html = buildCobrancaHTML(person, q);
     var filename = 'cobranca-'+slugify(person.name)+'-'+slugify(q.label)+'.html';
     downloadBlob(html, filename, 'text/html');
+  }
+
+  // ---------- Cobrança via WhatsApp (link wa.me, abre com mensagem pronta) ----------
+  function buildWhatsAppMessage(person, q, amount){
+    var lines = [];
+    lines.push('Olá, '+person.name+'! 👋');
+    lines.push('Segue o resumo da '+q.label+' (venc. '+fmtDate(q.dueDate)+'):');
+    lines.push('Total: '+money(amount));
+    if(hasPixConfig()){
+      var payload = buildPixPayload({
+        key: state.pixConfig.key,
+        name: state.pixConfig.name,
+        city: state.pixConfig.city,
+        amount: amount,
+        txid: (person.id+'-'+q.id).replace(/[^a-zA-Z0-9]/g,'').slice(0,25) || '***'
+      });
+      lines.push('');
+      lines.push('Pix Copia e Cola (cole no app do banco):');
+      lines.push(payload);
+    }
+    return lines.join('\n');
+  }
+
+  function sendWhatsApp(personId, quinzenaId){
+    var person = getPerson(personId);
+    var q = getQuinzena(quinzenaId) || currentQuinzena();
+    var phone = ((state.phones && state.phones[personId]) || '').replace(/\D/g,'');
+    if(!phone){
+      alert('Cadastre o WhatsApp de '+person.name+' primeiro (campo "WhatsApp" ao lado do preço, na aba dessa pessoa).');
+      return;
+    }
+    var totals = quinzenaTotals(q, personId);
+    var msg = buildWhatsAppMessage(person, q, totals.saldoTotal);
+    var url = 'https://wa.me/'+phone+'?text='+encodeURIComponent(msg);
+    window.open(url, '_blank');
   }
 
   // Ao focar num campo numérico que está com "0", seleciona o valor —
