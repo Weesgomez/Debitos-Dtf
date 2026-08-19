@@ -112,17 +112,17 @@
   }
   .ptab:hover{color:var(--ink); border-color:var(--line-strong);}
   .ptab.active{background:var(--accent-soft); border-color:rgba(59,130,246,.5); color:var(--accent-2); box-shadow:0 0 0 1px rgba(59,130,246,.25) inset;}
+  .ptab.all-tab{font-weight:700;}
+  .ptab.all-tab.active{background:linear-gradient(155deg, var(--accent), #1d4ed8); border-color:transparent; color:#fff; box-shadow:0 6px 16px -6px var(--accent-glow);}
+  .ptab-divider{width:1px; height:18px; background:var(--line-strong); margin:0 3px; flex:none; align-self:center;}
 
-  .kpi-filter-bar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px;}
-  .kpi-filter-label{font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-mute); font-weight:700; white-space:nowrap;}
-  .kpi-filter-chips{display:flex; gap:6px; flex-wrap:wrap; flex:1;}
-  .kfilter-chip{
-    padding:6px 12px; border-radius:999px; border:1px solid var(--line-strong); background:var(--panel-2);
-    cursor:pointer; font-size:12px; font-weight:600; color:var(--ink-soft); transition:all .15s; user-select:none;
-  }
-  .kfilter-chip:hover{color:var(--ink); border-color:rgba(255,255,255,.26);}
-  .kfilter-chip.active{background:var(--accent-soft); border-color:rgba(59,130,246,.5); color:var(--accent-2); box-shadow:0 0 0 1px rgba(59,130,246,.25) inset;}
-  .kfilter-chip.all-chip.active{background:linear-gradient(155deg, var(--accent), #1d4ed8); border-color:transparent; color:#fff; box-shadow:0 6px 16px -6px var(--accent-glow);}
+  .weekend-row td{ background:rgba(245,158,11,.055); }
+  .weekend-row:hover td{ background:rgba(245,158,11,.10); }
+  .weekend-row td:first-child{ background:rgba(245,158,11,.10); }
+  .weekend-row:hover td:first-child{ background:rgba(245,158,11,.15); }
+  .day-abbrev{ font-size:10.5px; font-weight:700; color:var(--ink-mute); margin-left:6px; text-transform:uppercase; letter-spacing:.02em; }
+  .weekend-row .day-abbrev{ color:#f59e0b; }
+  .all-selected-note{ color:var(--ink-mute); font-size:12.5px; padding:22px 4px; text-align:center; }
 
   .price-row{display:flex; gap:22px; flex-wrap:wrap; align-items:center; margin-bottom:16px; font-size:11.5px; color:var(--ink-soft); font-weight:600; text-transform:uppercase; letter-spacing:.04em;}
   .price-row label{display:flex; align-items:center; gap:8px;}
@@ -351,11 +351,6 @@
     <button class="primary" id="btn-nova-quinzena">+ Nova quinzena</button>
   </div>
 
-  <div class="kpi-filter-bar">
-    <div class="kpi-filter-label">Filtrar dashboard por pessoa</div>
-    <div class="kpi-filter-chips" id="kpi-filter"></div>
-  </div>
-
   <div class="kpi-row" id="kpi-row"></div>
 
   <div class="card">
@@ -408,6 +403,7 @@
   function toISO(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
   function fromISO(s){ var p=s.split('-').map(Number); return new Date(p[0], p[1]-1, p[2]); }
   function fmtDate(iso){ var d=fromISO(iso); return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear(); }
+  var DIAS_ABREV = ['DOM','SEG','TER','QUA','QUI','SEX','SÁB'];
   function daysInMonth(y,m){ return new Date(y, m+1, 0).getDate(); }
 
   function emptyPersonDay(p){
@@ -518,15 +514,12 @@
         if(parsed && parsed.quinzenas && parsed.quinzenas.length) return parsed;
       }catch(e){ console.warn('Falha ao ler dados salvos, usando semente padrão.', e); }
     }
-    return { quinzenas: [ buildSeedQuinzena() ], selectedQuinzenaId: null, selectedPersonId: 'dinho' };
+    return { quinzenas: [ buildSeedQuinzena() ], selectedQuinzenaId: null, selectedPersonId: 'ALL' };
   }
 
   state = loadInitialState();
   if(!state.selectedQuinzenaId) state.selectedQuinzenaId = state.quinzenas[state.quinzenas.length-1].id;
-  if(!state.selectedPersonId) state.selectedPersonId = 'dinho';
-
-  // Filtro de pessoas do dashboard (KPIs). Não é salvo na nuvem — é só uma preferência de visualização local.
-  var kpiFilterIds = PEOPLE.map(function(p){ return p.id; });
+  if(!state.selectedPersonId) state.selectedPersonId = 'ALL';
 
   function getPerson(id){ for(var i=0;i<PEOPLE.length;i++) if(PEOPLE[i].id===id) return PEOPLE[i]; }
   function getQuinzena(id){ for(var i=0;i<state.quinzenas.length;i++) if(state.quinzenas[i].id===id) return state.quinzenas[i]; }
@@ -613,7 +606,6 @@
     document.getElementById('q-title').textContent = q.label;
     document.getElementById('q-sub').textContent =
       'Período: '+fmtDate(q.startDate)+' a '+fmtDate(q.endDate)+'  ·  Saldo a pagar até '+fmtDate(q.dueDate);
-    renderKpiFilter();
     renderKpis();
     renderPersonTabs();
     renderPriceRow();
@@ -622,45 +614,12 @@
     renderResumoGeral();
   }
 
-  function renderKpiFilter(){
-    var wrap = document.getElementById('kpi-filter');
-    if(!wrap) return;
-    wrap.innerHTML = '';
-
-    var allSelected = kpiFilterIds.length === PEOPLE.length;
-    var allChip = document.createElement('div');
-    allChip.className = 'kfilter-chip all-chip' + (allSelected ? ' active' : '');
-    allChip.textContent = 'Todos';
-    allChip.addEventListener('click', function(){
-      kpiFilterIds = PEOPLE.map(function(p){ return p.id; });
-      renderKpiFilter();
-      renderKpis();
-    });
-    wrap.appendChild(allChip);
-
-    PEOPLE.forEach(function(p){
-      var chip = document.createElement('div');
-      var active = kpiFilterIds.indexOf(p.id) !== -1;
-      chip.className = 'kfilter-chip' + (active ? ' active' : '');
-      chip.textContent = p.name;
-      chip.addEventListener('click', function(){
-        var idx = kpiFilterIds.indexOf(p.id);
-        if(idx !== -1){
-          if(kpiFilterIds.length === 1) return; // mantém ao menos 1 pessoa selecionada
-          kpiFilterIds.splice(idx, 1);
-        } else {
-          kpiFilterIds.push(p.id);
-        }
-        renderKpiFilter();
-        renderKpis();
-      });
-      wrap.appendChild(chip);
-    });
-  }
-
+  // O mesmo seletor de pessoa (abas abaixo) controla o que aparece no dashboard:
+  // 'ALL' = totais de todo mundo; um id específico = só aquela pessoa.
   function getFilteredPeople(){
-    var ids = (kpiFilterIds && kpiFilterIds.length) ? kpiFilterIds : PEOPLE.map(function(p){ return p.id; });
-    return PEOPLE.filter(function(p){ return ids.indexOf(p.id) !== -1; });
+    if(state.selectedPersonId === 'ALL') return PEOPLE;
+    var p = getPerson(state.selectedPersonId);
+    return p ? [p] : PEOPLE;
   }
 
   function renderKpis(){
@@ -728,6 +687,18 @@
   function renderPersonTabs(){
     var wrap = document.getElementById('person-tabs');
     wrap.innerHTML = '';
+
+    var allBtn = document.createElement('div');
+    allBtn.className = 'ptab all-tab' + (state.selectedPersonId==='ALL' ? ' active' : '');
+    allBtn.textContent = 'Todos';
+    allBtn.title = 'Ver o total de todo mundo no dashboard';
+    allBtn.addEventListener('click', function(){ state.selectedPersonId = 'ALL'; render(); });
+    wrap.appendChild(allBtn);
+
+    var divider = document.createElement('div');
+    divider.className = 'ptab-divider';
+    wrap.appendChild(divider);
+
     PEOPLE.forEach(function(p){
       var btn = document.createElement('div');
       btn.className = 'ptab' + (p.id===state.selectedPersonId ? ' active' : '');
@@ -739,9 +710,15 @@
 
   function renderPriceRow(){
     var q = currentQuinzena();
-    var p = getPerson(state.selectedPersonId);
     var wrap = document.getElementById('price-row');
     wrap.innerHTML = '';
+
+    if(state.selectedPersonId === 'ALL'){
+      return; // sem pessoa específica selecionada — nada a editar aqui
+    }
+
+    var p = getPerson(state.selectedPersonId);
+    if(!p) return;
 
     if(p.type==='simples'){
       var lbl = document.createElement('label');
@@ -807,21 +784,32 @@
     btnReport.type = 'button';
     btnReport.className = 'btn-mini';
     btnReport.textContent = '🧾 Relatório de cobrança de '+p.name;
-    btnReport.addEventListener('click', function(){ downloadCobranca(p.id, q.id); });
+    btnReport.addEventListener('click', function(){
+      downloadCobranca(state.selectedPersonId, currentQuinzena().id);
+    });
     wrap.appendChild(btnReport);
 
     var btnWhats = document.createElement('button');
     btnWhats.type = 'button';
     btnWhats.className = 'btn-mini';
     btnWhats.textContent = '📲 Cobrar no WhatsApp';
-    btnWhats.addEventListener('click', function(){ sendWhatsApp(p.id, q.id); });
+    btnWhats.addEventListener('click', function(){
+      sendWhatsApp(state.selectedPersonId, currentQuinzena().id);
+    });
     wrap.appendChild(btnWhats);
   }
 
   function renderPersonTable(){
     var q = currentQuinzena();
-    var p = getPerson(state.selectedPersonId);
     var wrap = document.getElementById('person-table-wrap');
+
+    if(state.selectedPersonId === 'ALL'){
+      wrap.innerHTML = '<div class="all-selected-note">Selecione uma pessoa acima para ver e editar os lançamentos diários dela.</div>';
+      return;
+    }
+
+    var p = getPerson(state.selectedPersonId);
+    if(!p){ wrap.innerHTML = ''; return; }
     var table = document.createElement('table');
 
     var thead = document.createElement('thead');
@@ -838,9 +826,14 @@
 
     q.days.forEach(function(day){
       var e = day.entries[p.id];
+      var dow = fromISO(day.date).getDay();
+      var isWeekend = (dow === 0 || dow === 6);
       var tr = document.createElement('tr');
+      if(isWeekend) tr.className = 'weekend-row';
 
-      var tdDate = document.createElement('td'); tdDate.textContent = fmtDate(day.date); tr.appendChild(tdDate);
+      var tdDate = document.createElement('td');
+      tdDate.innerHTML = fmtDate(day.date) + '<span class="day-abbrev">'+DIAS_ABREV[dow]+'</span>';
+      tr.appendChild(tdDate);
 
       if(p.type==='simples'){
         var price = q.prices[p.id].v;
@@ -1179,24 +1172,27 @@
     var totals = quinzenaTotals(q, person.id);
     var statusVal = q.status[person.id];
     var linhas = [];
+    var wknd = [];
     q.days.forEach(function(day){
       var e = day.entries[person.id];
+      var dow = fromISO(day.date).getDay();
+      var dataLabel = fmtDate(day.date) + ' ('+DIAS_ABREV[dow]+')';
       var temMovimento;
       var cols;
       if(person.type==='simples'){
         var price = q.prices[person.id].v;
         var c = calcSimples(e, price);
         temMovimento = (Number(e.q)||0) !== 0 || (Number(e.dev)||0) !== 0;
-        cols = [fmtDate(day.date), e.q, money(c.saldoTotal), e.dev, money(c.saldoTotal)];
+        cols = [dataLabel, e.q, money(c.saldoTotal), e.dev, money(c.saldoTotal)];
       } else {
         var pa = q.prices[person.id].a, pb = q.prices[person.id].b;
         var c2 = calcDuplo(e, pa, pb);
         temMovimento = (Number(e.qc)||0) !== 0 || (Number(e.qb)||0) !== 0 || (Number(e.devc)||0) !== 0 || (Number(e.devb)||0) !== 0;
         var qc=Number(e.qc)||0, qb=Number(e.qb)||0, devc=Number(e.devc)||0, devb=Number(e.devb)||0;
         var saldoALiquido = (qc-devc)*pa, saldoBLiquido = (qb-devb)*pb;
-        cols = [fmtDate(day.date), e.qc, money(saldoALiquido), e.qb, money(saldoBLiquido), e.devc, e.devb, money(c2.saldoTotal)];
+        cols = [dataLabel, e.qc, money(saldoALiquido), e.qb, money(saldoBLiquido), e.devc, e.devb, money(c2.saldoTotal)];
       }
-      if(temMovimento) linhas.push(cols);
+      if(temMovimento){ linhas.push(cols); wknd.push(dow===0 || dow===6); }
     });
 
     var headers = person.type==='simples'
@@ -1217,7 +1213,7 @@
     }
 
     return {
-      headers: headers, linhas: linhas, moneyCols: moneyCols,
+      headers: headers, linhas: linhas, moneyCols: moneyCols, wknd: wknd,
       statusVal: statusVal, saldoTotal: totals.saldoTotal,
       qtdLiquida: qtdLiquida, qtdDevolvida: qtdDevolvida, breakdown: breakdown
     };
@@ -1239,10 +1235,12 @@
     var d = computeCobrancaData(person, q);
     var headers = d.headers, linhas = d.linhas, moneyCols = d.moneyCols, statusVal = d.statusVal;
 
+    var wknd = d.wknd || [];
     var theadHtml = '<tr>'+headers.map(function(h){ return '<th>'+h+'</th>'; }).join('')+'</tr>';
     var rowsHtml = linhas.length
-      ? linhas.map(function(cols){
-          return '<tr>'+cols.map(function(v,i){
+      ? linhas.map(function(cols, rowIdx){
+          var rowClass = wknd[rowIdx] ? ' class="wknd-row"' : '';
+          return '<tr'+rowClass+'>'+cols.map(function(v,i){
             var isMoney = moneyCols.indexOf(i) !== -1;
             return '<td'+(i===0?'':' style="text-align:right"')+'>'+(isMoney ? v : v)+'</td>';
           }).join('')+'</tr>';
@@ -1270,6 +1268,8 @@
       '.info .val{font-size:15px;font-weight:700;}'+
       'table{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:18px;}'+
       'th,td{padding:8px 10px;border-bottom:1px solid #e6e8ec;text-align:right;}'+
+      'tr.wknd-row td{background:#fff7ed;}'+
+      'tr.wknd-row td:first-child{color:#c2600a;font-weight:700;}'+
       'th:first-child,td:first-child{text-align:left;}'+
       'th{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#888;font-weight:700;}'+
       'tr{page-break-inside:avoid;break-inside:avoid;}'+
@@ -1448,7 +1448,7 @@
         if(!parsed.quinzenas || !parsed.quinzenas.length) throw new Error('Arquivo inválido.');
         state = parsed;
         if(!state.selectedQuinzenaId) state.selectedQuinzenaId = state.quinzenas[state.quinzenas.length-1].id;
-        if(!state.selectedPersonId) state.selectedPersonId = 'dinho';
+        if(!state.selectedPersonId) state.selectedPersonId = 'ALL';
         render();
         scheduleSave();
         alert('Dados importados com sucesso.');
@@ -1553,7 +1553,7 @@
         if(row && row.data && row.data.quinzenas && row.data.quinzenas.length){
           state = row.data;
           if(!state.selectedQuinzenaId) state.selectedQuinzenaId = state.quinzenas[state.quinzenas.length-1].id;
-          if(!state.selectedPersonId) state.selectedPersonId = 'dinho';
+          if(!state.selectedPersonId) state.selectedPersonId = 'ALL';
           lastSavedSnapshot = JSON.stringify(state);
         } else {
           // Primeira vez: ainda não existe nada salvo na nuvem — envia o estado atual (semente) como inicial.
@@ -1670,6 +1670,24 @@
     });
   });
 
+  // ---- Enter para confirmar nos formulários de login/senha ----
+  function bindEnterToClick(inputIds, buttonId){
+    inputIds.forEach(function(inputId){
+      var el = document.getElementById(inputId);
+      if(!el) return;
+      el.addEventListener('keydown', function(ev){
+        if(ev.key === 'Enter'){
+          ev.preventDefault();
+          var btn = document.getElementById(buttonId);
+          if(btn) btn.click();
+        }
+      });
+    });
+  }
+  bindEnterToClick(['auth-email','auth-password'], 'btn-auth-signin');
+  bindEnterToClick(['forgot-email'], 'btn-forgot-send');
+  bindEnterToClick(['recovery-password','recovery-password-confirm'], 'btn-recovery-save');
+
   document.getElementById('btn-history').addEventListener('click', function(){
     if(!supabaseClient || !currentSession) return;
     var modal = document.getElementById('history-modal');
@@ -1709,7 +1727,7 @@
       if(res.error || !res.data){ alert('Não foi possível carregar essa versão.'); return; }
       state = res.data.data;
       if(!state.selectedQuinzenaId) state.selectedQuinzenaId = state.quinzenas[state.quinzenas.length-1].id;
-      if(!state.selectedPersonId) state.selectedPersonId = 'dinho';
+      if(!state.selectedPersonId) state.selectedPersonId = 'ALL';
       render();
       scheduleSave();
       document.getElementById('history-modal').classList.add('hidden');
