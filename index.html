@@ -113,6 +113,17 @@
   .ptab:hover{color:var(--ink); border-color:var(--line-strong);}
   .ptab.active{background:var(--accent-soft); border-color:rgba(59,130,246,.5); color:var(--accent-2); box-shadow:0 0 0 1px rgba(59,130,246,.25) inset;}
 
+  .kpi-filter-bar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px;}
+  .kpi-filter-label{font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-mute); font-weight:700; white-space:nowrap;}
+  .kpi-filter-chips{display:flex; gap:6px; flex-wrap:wrap; flex:1;}
+  .kfilter-chip{
+    padding:6px 12px; border-radius:999px; border:1px solid var(--line-strong); background:var(--panel-2);
+    cursor:pointer; font-size:12px; font-weight:600; color:var(--ink-soft); transition:all .15s; user-select:none;
+  }
+  .kfilter-chip:hover{color:var(--ink); border-color:rgba(255,255,255,.26);}
+  .kfilter-chip.active{background:var(--accent-soft); border-color:rgba(59,130,246,.5); color:var(--accent-2); box-shadow:0 0 0 1px rgba(59,130,246,.25) inset;}
+  .kfilter-chip.all-chip.active{background:linear-gradient(155deg, var(--accent), #1d4ed8); border-color:transparent; color:#fff; box-shadow:0 6px 16px -6px var(--accent-glow);}
+
   .price-row{display:flex; gap:22px; flex-wrap:wrap; align-items:center; margin-bottom:16px; font-size:11.5px; color:var(--ink-soft); font-weight:600; text-transform:uppercase; letter-spacing:.04em;}
   .price-row label{display:flex; align-items:center; gap:8px;}
   .price-row input{
@@ -340,6 +351,11 @@
     <button class="primary" id="btn-nova-quinzena">+ Nova quinzena</button>
   </div>
 
+  <div class="kpi-filter-bar">
+    <div class="kpi-filter-label">Filtrar dashboard por pessoa</div>
+    <div class="kpi-filter-chips" id="kpi-filter"></div>
+  </div>
+
   <div class="kpi-row" id="kpi-row"></div>
 
   <div class="card">
@@ -509,6 +525,9 @@
   if(!state.selectedQuinzenaId) state.selectedQuinzenaId = state.quinzenas[state.quinzenas.length-1].id;
   if(!state.selectedPersonId) state.selectedPersonId = 'dinho';
 
+  // Filtro de pessoas do dashboard (KPIs). Não é salvo na nuvem — é só uma preferência de visualização local.
+  var kpiFilterIds = PEOPLE.map(function(p){ return p.id; });
+
   function getPerson(id){ for(var i=0;i<PEOPLE.length;i++) if(PEOPLE[i].id===id) return PEOPLE[i]; }
   function getQuinzena(id){ for(var i=0;i<state.quinzenas.length;i++) if(state.quinzenas[i].id===id) return state.quinzenas[i]; }
   function currentQuinzena(){ return getQuinzena(state.selectedQuinzenaId); }
@@ -594,6 +613,7 @@
     document.getElementById('q-title').textContent = q.label;
     document.getElementById('q-sub').textContent =
       'Período: '+fmtDate(q.startDate)+' a '+fmtDate(q.endDate)+'  ·  Saldo a pagar até '+fmtDate(q.dueDate);
+    renderKpiFilter();
     renderKpis();
     renderPersonTabs();
     renderPriceRow();
@@ -602,10 +622,54 @@
     renderResumoGeral();
   }
 
+  function renderKpiFilter(){
+    var wrap = document.getElementById('kpi-filter');
+    if(!wrap) return;
+    wrap.innerHTML = '';
+
+    var allSelected = kpiFilterIds.length === PEOPLE.length;
+    var allChip = document.createElement('div');
+    allChip.className = 'kfilter-chip all-chip' + (allSelected ? ' active' : '');
+    allChip.textContent = 'Todos';
+    allChip.addEventListener('click', function(){
+      kpiFilterIds = PEOPLE.map(function(p){ return p.id; });
+      renderKpiFilter();
+      renderKpis();
+    });
+    wrap.appendChild(allChip);
+
+    PEOPLE.forEach(function(p){
+      var chip = document.createElement('div');
+      var active = kpiFilterIds.indexOf(p.id) !== -1;
+      chip.className = 'kfilter-chip' + (active ? ' active' : '');
+      chip.textContent = p.name;
+      chip.addEventListener('click', function(){
+        var idx = kpiFilterIds.indexOf(p.id);
+        if(idx !== -1){
+          if(kpiFilterIds.length === 1) return; // mantém ao menos 1 pessoa selecionada
+          kpiFilterIds.splice(idx, 1);
+        } else {
+          kpiFilterIds.push(p.id);
+        }
+        renderKpiFilter();
+        renderKpis();
+      });
+      wrap.appendChild(chip);
+    });
+  }
+
+  function getFilteredPeople(){
+    var ids = (kpiFilterIds && kpiFilterIds.length) ? kpiFilterIds : PEOPLE.map(function(p){ return p.id; });
+    return PEOPLE.filter(function(p){ return ids.indexOf(p.id) !== -1; });
+  }
+
   function renderKpis(){
     var q = currentQuinzena();
+    var filteredPeople = getFilteredPeople();
+    var isFiltered = filteredPeople.length !== PEOPLE.length;
+
     var totalSaldo=0, totalAberto=0, totalPago=0, pessoasAberto=0, pessoasPagas=0, totalItens=0;
-    PEOPLE.forEach(function(p){
+    filteredPeople.forEach(function(p){
       var t = quinzenaTotals(q, p.id);
       var qtd = p.type==='simples' ? t.q : (t.qc+t.qb);
       totalSaldo += t.saldoTotal;
@@ -619,7 +683,7 @@
     if(idx > 0){
       var prev = state.quinzenas[idx-1];
       var prevTotal = 0;
-      PEOPLE.forEach(function(p){ prevTotal += quinzenaTotals(prev, p.id).saldoTotal; });
+      filteredPeople.forEach(function(p){ prevTotal += quinzenaTotals(prev, p.id).saldoTotal; });
       var diff = totalSaldo - prevTotal;
       if(Math.abs(diff) >= 0.005){
         var cls = diff > 0 ? 'diff-up' : 'diff-down';
@@ -628,17 +692,21 @@
       }
     }
 
+    var labelSuffix = isFiltered
+      ? (filteredPeople.length===1 ? ' de '+filteredPeople[0].name : ' ('+filteredPeople.length+' pessoas)')
+      : '';
+
     var wrap = document.getElementById('kpi-row');
     wrap.innerHTML =
-      '<div class="kpi-card"><div class="kpi-label">Saldo total da quinzena</div>'+
+      '<div class="kpi-card"><div class="kpi-label">Saldo total'+labelSuffix+'</div>'+
         '<div class="kpi-value"><span class="money">'+money(totalSaldo)+'</span></div>'+diffHtml+'</div>'+
-      '<div class="kpi-card"><div class="kpi-label">Em aberto</div>'+
+      '<div class="kpi-card"><div class="kpi-label">Em aberto'+labelSuffix+'</div>'+
         '<div class="kpi-value neg"><span class="money">'+money(totalAberto)+'</span></div>'+
-        '<div class="kpi-sub">'+pessoasAberto+' de '+PEOPLE.length+' pessoas com saldo pendente</div></div>'+
-      '<div class="kpi-card"><div class="kpi-label">Pago</div>'+
+        '<div class="kpi-sub">'+pessoasAberto+' de '+filteredPeople.length+' pessoas com saldo pendente</div></div>'+
+      '<div class="kpi-card"><div class="kpi-label">Pago'+labelSuffix+'</div>'+
         '<div class="kpi-value pos"><span class="money">'+money(totalPago)+'</span></div>'+
-        '<div class="kpi-sub">'+pessoasPagas+' de '+PEOPLE.length+' pessoas quitadas</div></div>'+
-      '<div class="kpi-card"><div class="kpi-label">Itens no período</div>'+
+        '<div class="kpi-sub">'+pessoasPagas+' de '+filteredPeople.length+' pessoas quitadas</div></div>'+
+      '<div class="kpi-card"><div class="kpi-label">Itens no período'+labelSuffix+'</div>'+
         '<div class="kpi-value">'+totalItens+'</div>'+
         '<div class="kpi-sub">unidades lançadas nesta quinzena</div></div>';
   }
